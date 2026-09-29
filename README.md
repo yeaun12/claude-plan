@@ -8,6 +8,8 @@
 - DB 구조: `contracts/pds-schema-v2.json`
 - 자동 검사: `scripts/check.mjs` → 결과 `evidence/check-result.md`
 - 화면 모드: 흰 바탕(기본)·모눈 노트·어둡게 — 오른쪽 위에서 전환, 이 브라우저에 기억
+- Calendar 탭: 마감·실행 기록을 KST 날짜별 월 달력으로 보기(읽기 전용). 날짜 → 그날 기록, 주 번호 → See 기간 설정
+- See 기간 빠른 선택: 이번 주 / 지난 주 / 이번 달
 - **배포·자료 입력·제출까지 단계별 안내: [`GUIDE.md`](GUIDE.md)**
 
 ## 배포 (Vercel + Turso)

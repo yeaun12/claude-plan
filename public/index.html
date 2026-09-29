@@ -42,6 +42,7 @@
       <button type="button" role="tab" class="tab tab-plan" data-view="plan" id="tab-plan" aria-controls="view-plan"><span class="tab-en">Plan</span><span class="tab-ko">계획</span></button>
       <button type="button" role="tab" class="tab tab-do" data-view="do" id="tab-do" aria-controls="view-do"><span class="tab-en">Do</span><span class="tab-ko">실제로 한 일</span></button>
       <button type="button" role="tab" class="tab tab-see" data-view="see" id="tab-see" aria-controls="view-see"><span class="tab-en">See</span><span class="tab-ko">돌아보기</span></button>
+      <button type="button" role="tab" class="tab tab-cal" data-view="cal" id="tab-cal" aria-controls="view-cal"><span class="tab-en">Calendar</span><span class="tab-ko">달력</span></button>
     </nav>
 
     <main>
@@ -140,6 +141,11 @@
             <label>기간 끝<input type="date" name="to"></label>
             <button type="submit" class="btn">기간 적용</button>
             <button type="button" class="btn ghost" id="periodAll">전체 기간</button>
+            <div class="quick" role="group" aria-label="기간 빠른 선택">
+              <button type="button" class="btn small" data-quick="thisWeek">이번 주</button>
+              <button type="button" class="btn small" data-quick="lastWeek">지난 주</button>
+              <button type="button" class="btn small" data-quick="thisMonth">이번 달</button>
+            </div>
             <p class="muted small">기간을 정하면 <b>마감일이 그 기간에 드는</b> 할 일만 셉니다. 지연은 서울 시간 오늘(<span id="seeToday"></span>)보다 마감일이 앞서고 아직 완료하지 않은 할 일입니다.</p>
           </form>
 
@@ -162,6 +168,32 @@
 
           <h3 class="section-title">돌아보기 기록</h3>
           <ol class="reviews" id="reviewList"></ol>
+        </div>
+      </section>
+
+      <!-- ============ CALENDAR ============ -->
+      <section class="view view-cal" id="view-cal" role="tabpanel" aria-labelledby="tab-cal" hidden>
+        <div class="page need-plan" hidden><p>먼저 <b>Plan</b>에서 계획을 세워 주세요.</p></div>
+        <div class="page has-plan">
+          <div class="cal-head">
+            <button type="button" class="btn small" id="calPrev" aria-label="이전 달">‹</button>
+            <h2 id="calTitle"></h2>
+            <button type="button" class="btn small" id="calNext" aria-label="다음 달">›</button>
+            <button type="button" class="btn ghost small" id="calToday">이번 달</button>
+          </div>
+          <ul class="cal-legend">
+            <li><span class="lg lg-period"></span>계획 기간</li>
+            <li><span class="lg lg-due"></span>마감인 할 일</li>
+            <li><span class="lg lg-late"></span>지연</li>
+            <li><span class="lg lg-done"></span>완료</li>
+            <li><span class="lg lg-run"></span>실제로 한 일(실행 기록)</li>
+          </ul>
+          <p class="muted small">날짜는 서울 시간(KST) 기준입니다. 날짜를 누르면 그날의 기록이 아래에 나오고, 왼쪽 주 번호를 누르면 See의 기간이 그 주(월~일)로 설정됩니다. 달력은 저장된 기록을 보여 주기만 하고 아무것도 바꾸지 않습니다.</p>
+          <div class="cal" id="calGrid" role="grid" aria-labelledby="calTitle"></div>
+          <div class="cal-day" id="calDay" hidden>
+            <h3 id="calDayTitle"></h3>
+            <ul id="calDayList"></ul>
+          </div>
         </div>
       </section>
     </main>

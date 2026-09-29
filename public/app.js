@@ -20,6 +20,7 @@ const state = {
   evidenceKey: null,
   period: { from: '', to: '' },
   completeKeys: new Map(),
+  cal: { month: null, selected: null, tasks: [], runs: [] },
 };
 
 // ---------- 도우미 ----------
@@ -82,9 +83,21 @@ const fmtDate = (d) => (d ? d.replaceAll('-', '.') : '없음');
 function fmtInstant(iso) {
   return new Intl.DateTimeFormat('ko-KR', { timeZone: TZ, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 }
-function todayKst() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+function todayKst(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(date);
 }
+// YYYY-MM-DD 날짜 계산 (시간대 영향 없이 날짜만)
+const dayMs = 86400000;
+const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * dayMs).toISOString().slice(0, 10);
+const weekdayMon0 = (d) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7; // 월=0 … 일=6
+const mondayOf = (d) => addDays(d, -weekdayMon0(d));
+function isoWeek(d) {
+  const thu = addDays(mondayOf(d), 3);
+  const jan1 = `${thu.slice(0, 4)}-01-01`;
+  return Math.floor((Date.parse(`${thu}T00:00:00Z`) - Date.parse(`${jan1}T00:00:00Z`)) / dayMs / 7) + 1;
+}
+const DOW = ['월', '화', '수', '목', '금', '토', '일'];
+const fmtMonthDay = (d) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일 (${DOW[weekdayMon0(d)]})`;
 // datetime-local 값(서울 시간) ↔ ISO
 function kstInputValue(date) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
@@ -99,10 +112,11 @@ function formData(form) {
 }
 
 // ---------- 주소(#보기?p=계획ID)로 위치 기억 ----------
+const VIEWS = ['plan', 'do', 'see', 'cal'];
 function readHash() {
   const [view, qs] = location.hash.replace(/^#/, '').split('?');
   const p = new URLSearchParams(qs || '');
-  return { view: ['plan', 'do', 'see'].includes(view) ? view : 'plan', planId: Number(p.get('p')) || null };
+  return { view: VIEWS.includes(view) ? view : 'plan', planId: Number(p.get('p')) || null };
 }
 function writeHash() {
   const next = `#${state.view}${state.planId ? `?p=${state.planId}` : ''}`;
@@ -113,7 +127,7 @@ function writeHash() {
 function setView(view) {
   state.view = view;
   for (const tab of document.querySelectorAll('.tab')) tab.setAttribute('aria-selected', String(tab.dataset.view === view));
-  for (const v of ['plan', 'do', 'see']) $(`#view-${v}`).hidden = v !== view;
+  for (const v of VIEWS) $(`#view-${v}`).hidden = v !== view;
   writeHash();
   return renderView();
 }
@@ -126,6 +140,7 @@ async function renderView() {
   if (!hasPlan) return;
   if (state.view === 'do') return loadTasks();
   if (state.view === 'see') return loadSee();
+  if (state.view === 'cal') return loadCalendar();
 }
 
 // ---------- 계획 ----------
@@ -273,7 +288,7 @@ async function loadTasks() {
 function renderTasks() {
   const note = $('#filterNote');
   note.hidden = !state.filter.ids;
-  if (state.filter.ids) $('#filterNoteText').textContent = `돌아보기의 "${state.filter.idsLabel}" 근거 할 일 ${state.filter.ids.length}개만 보고 있습니다.`;
+  if (state.filter.ids) $('#filterNoteText').textContent = `${state.filter.idsLabel}에서 고른 할 일 ${state.filter.ids.length}개만 보고 있습니다.`;
   $('#taskEmpty').hidden = state.tasks.length > 0;
   $('#taskList').replaceChildren(...state.tasks.map(renderTask));
 }
@@ -451,6 +466,7 @@ async function loadSee() {
   const plan = state.plans.find((p) => p.id === state.planId);
   $('#seePlanName').textContent = plan ? `#${plan.id} ${plan.title}` : '';
   $('#seeToday').textContent = fmtDate(todayKst());
+  syncPeriodForm();
   const p = new URLSearchParams({ plan_id: state.planId });
   if (state.period.from) p.set('from', state.period.from);
   if (state.period.to) p.set('to', state.period.to);
@@ -493,7 +509,7 @@ async function renderEvidence() {
       items.push(h('li', {},
         h('span', {}, h('b', { class: 'num', text: `할 일 #${t.id} ` }), t.title,
           h('span', { class: 'muted small', text: ` · ${t.status === 'done' ? '완료' : '진행 중'} · 마감 ${fmtDate(t.due_date)} · 예상 ${t.estimated_minutes}분 · 실제 ${t.actual_minutes}분` })),
-        h('button', { type: 'button', class: 'link', text: 'Do에서 이 기록 보기', onclick: () => gotoTask(t.id, s.task_ids, tile.label) })));
+        h('button', { type: 'button', class: 'link', text: 'Do에서 이 기록 보기', onclick: () => gotoTask(t.id, s.task_ids, `돌아보기 "${tile.label}"`) })));
     }
   }
   if (s.run_ids && s.run_ids.length) {
@@ -502,7 +518,7 @@ async function renderEvidence() {
       items.push(h('li', {},
         h('span', {}, h('b', { class: 'num', text: `실행 기록 #${r.id} ` }), `${r.task_title} · ${fmtInstant(r.started_at)} → ${fmtInstant(r.ended_at)} · ${r.actual_minutes}분`,
           r.blocker ? h('span', { class: 'muted small', text: ` · 막힘: ${r.blocker}` }) : null),
-        h('button', { type: 'button', class: 'link', text: 'Do에서 이 기록 보기', onclick: () => gotoTask(r.task_id, null, tile.label, true) })));
+        h('button', { type: 'button', class: 'link', text: 'Do에서 이 기록 보기', onclick: () => gotoTask(r.task_id, null, `돌아보기 "${tile.label}"`, true) })));
     }
   }
   if (!items.length) items.push(h('li', { class: 'muted', text: '이 숫자에 해당하는 기록이 없습니다 (0).' }));
@@ -553,6 +569,123 @@ async function submitReview(e) {
     toast('돌아보기를 저장했습니다. 고칠 점을 다음 계획으로 넘길 수 있습니다.');
     await loadSee();
   } catch (err) { fail(err); }
+}
+
+// ---------- 기간 빠른 선택 ----------
+function quickPeriod(kind) {
+  const today = todayKst();
+  const mon = mondayOf(today);
+  if (kind === 'thisWeek') return { from: mon, to: addDays(mon, 6) };
+  if (kind === 'lastWeek') return { from: addDays(mon, -7), to: addDays(mon, -1) };
+  const first = `${today.slice(0, 7)}-01`;
+  const nextFirst = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString().slice(0, 10);
+  return { from: first, to: addDays(nextFirst, -1) };
+}
+
+function syncPeriodForm() {
+  const f = $('#periodForm');
+  f.elements.from.value = state.period.from;
+  f.elements.to.value = state.period.to;
+  for (const b of document.querySelectorAll('[data-quick]')) {
+    const q = quickPeriod(b.dataset.quick);
+    b.setAttribute('aria-pressed', String(q.from === state.period.from && q.to === state.period.to));
+  }
+}
+
+// ---------- 달력 (저장된 기록을 날짜별로 보여 주기만 함) ----------
+async function loadCalendar() {
+  if (!state.cal.month) state.cal.month = todayKst().slice(0, 7);
+  const [t, r] = await Promise.all([
+    api(`/api/tasks?plan_id=${state.planId}&sort=due`),
+    api(`/api/runs?plan_id=${state.planId}`),
+  ]);
+  state.cal.tasks = t.tasks;
+  state.cal.runs = r.runs.map((x) => ({ ...x, day: todayKst(new Date(x.started_at)) }));
+  renderCalendar();
+}
+
+function calDayData(day) {
+  const today = todayKst();
+  const tasks = state.cal.tasks.filter((t) => t.due_date === day).map((t) => ({
+    ...t, kind: t.status === 'done' ? 'done' : t.due_date < today ? 'late' : 'due',
+  }));
+  const runs = state.cal.runs.filter((x) => x.day === day);
+  return { tasks, runs, minutes: runs.reduce((a, x) => a + Number(x.actual_minutes), 0) };
+}
+
+function shiftMonth(n) {
+  const [y, m] = state.cal.month.split('-').map(Number);
+  state.cal.month = new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7);
+  state.cal.selected = null;
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const month = state.cal.month;
+  const [y, m] = month.split('-').map(Number);
+  $('#calTitle').textContent = `${y}년 ${m}월`;
+  const plan = state.plans.find((p) => p.id === state.planId);
+  const today = todayKst();
+  const first = `${month}-01`;
+  const start = mondayOf(first);
+  const nextFirst = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  const end = addDays(mondayOf(addDays(nextFirst, -1)), 6);
+  const cells = [h('div', { class: 'cal-dow', text: '주' }), ...DOW.map((d, i) => h('div', { class: `cal-dow${i === 6 ? ' sun' : ''}`, text: d }))];
+  for (let wk = start; wk <= end; wk = addDays(wk, 7)) {
+    const sun = addDays(wk, 6);
+    cells.push(h('button', {
+      type: 'button', class: 'cal-week', text: `W${isoWeek(wk)}`,
+      title: `${fmtDate(wk)} ~ ${fmtDate(sun)} 을 See 기간으로`, 'aria-label': `${fmtMonthDay(wk)}부터 ${fmtMonthDay(sun)}까지를 돌아보기 기간으로 설정`,
+      onclick: () => { state.period = { from: wk, to: sun }; state.evidenceKey = null; setView('see').catch(fail); },
+    }));
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(wk, i);
+      const d = calDayData(day);
+      const inPlan = plan && day >= plan.start_date && day <= plan.end_date;
+      const cls = ['cal-cell', day.slice(0, 7) !== month && 'out', inPlan && 'in-plan', day === today && 'today', day === state.cal.selected && 'selected'].filter(Boolean).join(' ');
+      const items = [
+        ...d.tasks.map((t) => h('span', { class: `cal-item ${t.kind}`, text: t.title })),
+        ...d.runs.map((x) => h('span', { class: 'cal-item run', text: `▶ ${x.task_title}` })),
+      ];
+      const count = d.tasks.length + d.runs.length;
+      cells.push(h('button', {
+        type: 'button', class: cls, role: 'gridcell',
+        'aria-label': `${fmtMonthDay(day)}${inPlan ? ', 계획 기간' : ''}, 마감 ${d.tasks.length}건, 실행 기록 ${d.runs.length}건`,
+        onclick: () => { state.cal.selected = day; renderCalendar(); $('#calDay').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); },
+      },
+      h('span', { class: 'cal-num' }, h('span', { text: String(Number(day.slice(8))) }), d.minutes ? h('span', { class: 'cal-mins', text: `${d.minutes}분` }) : null),
+      items.slice(0, 3),
+      items.length > 3 ? h('span', { class: 'cal-more', text: `+${items.length - 3}` }) : null,
+      count ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' },
+        d.tasks.map((t) => h('i', { class: `d-${t.kind}` })), d.runs.map(() => h('i', { class: 'd-run' }))) : null));
+    }
+  }
+  $('#calGrid').replaceChildren(...cells);
+  renderCalDay();
+}
+
+function renderCalDay() {
+  const box = $('#calDay');
+  const day = state.cal.selected;
+  if (!day) { box.hidden = true; return; }
+  const d = calDayData(day);
+  box.hidden = false;
+  $('#calDayTitle').textContent = `${fmtMonthDay(day)} · 마감 ${d.tasks.length}건 · 실행 기록 ${d.runs.length}건${d.minutes ? ` (${d.minutes}분)` : ''}`;
+  const label = `달력 ${fmtMonthDay(day)}`;
+  const kindText = { due: '마감', late: '마감 · 지연', done: '마감 · 완료' };
+  const items = [
+    ...d.tasks.map((t) => h('li', {},
+      h('span', {}, h('span', { class: `kind ${t.kind}`, text: kindText[t.kind] }), h('b', { class: 'num', text: `할 일 #${t.id} ` }), t.title,
+        h('span', { class: 'muted small', text: ` · 예상 ${t.estimated_minutes}분 · 실제 ${t.actual_minutes}분` })),
+      h('button', { type: 'button', class: 'link', text: 'Do에서 보기', onclick: () => gotoTask(t.id, null, label) }))),
+    ...d.runs.map((x) => h('li', {},
+      h('span', {}, h('span', { class: 'kind run', text: '실제로 한 일' }), h('b', { class: 'num', text: `기록 #${x.id} ` }),
+        `${x.task_title} · ${fmtInstant(x.started_at)} → ${fmtInstant(x.ended_at)} · ${x.actual_minutes}분`,
+        x.blocker ? h('span', { class: 'muted small', text: ` · 막힘: ${x.blocker}` }) : null),
+      h('button', { type: 'button', class: 'link', text: 'Do에서 보기', onclick: () => gotoTask(x.task_id, null, label, true) }))),
+  ];
+  if (!items.length) items.push(h('li', { class: 'muted', text: '이날은 마감인 할 일도, 실행 기록도 없습니다.' }));
+  $('#calDayList').replaceChildren(...items);
 }
 
 // ---------- 공통 ----------
@@ -613,6 +746,12 @@ function bind() {
     loadSee().catch(fail);
   });
   $('#periodAll').addEventListener('click', () => { $('#periodForm').reset(); state.period = { from: '', to: '' }; loadSee().catch(fail); });
+  for (const b of document.querySelectorAll('[data-quick]')) {
+    b.addEventListener('click', () => { state.period = quickPeriod(b.dataset.quick); state.evidenceKey = null; loadSee().catch(fail); });
+  }
+  $('#calPrev').addEventListener('click', () => shiftMonth(-1));
+  $('#calNext').addEventListener('click', () => shiftMonth(1));
+  $('#calToday').addEventListener('click', () => { state.cal.month = todayKst().slice(0, 7); state.cal.selected = null; renderCalendar(); });
   $('#reviewForm').addEventListener('submit', submitReview);
   $('#exportBtn').addEventListener('click', exportAll);
   window.addEventListener('hashchange', () => {
