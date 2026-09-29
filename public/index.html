@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>플랜두씨 노트</title>
+  <meta name="description" content="계획(Plan) → 실제로 한 일(Do) → 돌아보기(See)를 서버 데이터베이스로 잇는 다이어리">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Nanum+Pen+Script&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="notebook">
+    <header class="masthead">
+      <div class="brand-row">
+        <h1 class="brand"><span class="hl hl-plan">Plan</span> <span class="hl hl-do">Do</span> <span class="hl hl-see">See</span> <span class="brand-word">노트</span></h1>
+        <p class="today" id="today"></p>
+      </div>
+      <p class="notice" id="publicNotice" role="note"><strong>공개 안내</strong> 지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요.</p>
+      <div class="plan-picker">
+        <label for="planSelect">지금 보는 계획</label>
+        <select id="planSelect"><option value="">계획 없음</option></select>
+        <button type="button" class="btn ghost" id="newPlanBtn">+ 새 계획</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="단계">
+      <button type="button" role="tab" class="tab tab-plan" data-view="plan" id="tab-plan" aria-controls="view-plan"><span class="tab-en">Plan</span><span class="tab-ko">계획</span></button>
+      <button type="button" role="tab" class="tab tab-do" data-view="do" id="tab-do" aria-controls="view-do"><span class="tab-en">Do</span><span class="tab-ko">실제로 한 일</span></button>
+      <button type="button" role="tab" class="tab tab-see" data-view="see" id="tab-see" aria-controls="view-see"><span class="tab-en">See</span><span class="tab-ko">돌아보기</span></button>
+    </nav>
+
+    <main>
+      <!-- ============ PLAN ============ -->
+      <section class="view view-plan" id="view-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+        <div id="planEmpty" class="page empty" hidden>
+          <h2>첫 계획을 세워 보세요</h2>
+          <ol class="steps">
+            <li>지금 실제로 하고 있는 일 하나를 계획으로 적습니다.</li>
+            <li><b>Do</b>에서 그 계획에 딸린 할 일을 다섯 개 이상 넣고, 실제로 한 일을 기록합니다.</li>
+            <li><b>See</b>에서 예상과 실제의 차이를 보고, 고칠 점 한 줄을 다음 계획으로 넘깁니다.</li>
+          </ol>
+        </div>
+
+        <form id="planForm" class="page form" hidden autocomplete="off">
+          <h2 id="planFormTitle">새 계획</h2>
+          <p class="carried" id="planFormCarried" hidden></p>
+          <input type="hidden" name="carried_from_review_id">
+          <div class="grid2">
+            <label class="span2">계획 이름<input name="title" required maxlength="80" placeholder="예: 매일 30분 영어 듣기"></label>
+            <label>시작일<input type="date" name="start_date" required></label>
+            <label>끝나는 날<input type="date" name="end_date" required></label>
+            <label>우선순위
+              <select name="priority"><option value="1">1 · 높음</option><option value="2" selected>2 · 보통</option><option value="3">3 · 낮음</option></select>
+            </label>
+            <label>예상 시간(분)<input type="number" name="estimated_minutes" min="0" step="1" required inputmode="numeric"></label>
+            <label class="span2">성공 기준<textarea name="success_criteria" required maxlength="300" rows="2" placeholder="무엇이 되면 이 계획을 해냈다고 볼까요?"></textarea></label>
+            <label class="span2" id="changeNoteLabel" hidden>고친 이유<input name="change_note" maxlength="200" placeholder="예: 마감이 당겨져서 기간을 줄임"></label>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn primary" id="planSubmit">계획 저장</button>
+            <button type="button" class="btn ghost" id="planCancel">취소</button>
+          </div>
+        </form>
+
+        <article id="planDetail" class="page" hidden>
+          <div class="page-head">
+            <h2 id="pdTitle"></h2>
+            <span class="badge" id="pdId"></span>
+          </div>
+          <p class="carried" id="pdCarried" hidden></p>
+          <dl class="facts">
+            <div><dt>기간</dt><dd id="pdPeriod"></dd></div>
+            <div><dt>우선순위</dt><dd id="pdPriority"></dd></div>
+            <div><dt>예상 시간</dt><dd id="pdEstimate"></dd></div>
+            <div><dt>지금 판</dt><dd id="pdVersion"></dd></div>
+            <div class="wide"><dt>성공 기준</dt><dd id="pdCriteria"></dd></div>
+          </dl>
+          <div class="actions"><button type="button" class="btn" id="editPlanBtn">계획 고치기</button></div>
+
+          <h3 class="section-title">고친 이력 <small>처음 세운 계획은 1판으로 그대로 남습니다</small></h3>
+          <ol class="versions" id="pdVersions"></ol>
+        </article>
+      </section>
+
+      <!-- ============ DO ============ -->
+      <section class="view view-do" id="view-do" role="tabpanel" aria-labelledby="tab-do" hidden>
+        <div class="page need-plan" hidden><p>먼저 <b>Plan</b>에서 계획을 세워 주세요.</p></div>
+        <div class="page has-plan">
+          <form id="taskForm" class="task-form" autocomplete="off">
+            <h2>할 일 넣기</h2>
+            <div class="row">
+              <label class="grow">할 일<input name="title" required maxlength="120" placeholder="이 계획을 위해 할 일"></label>
+              <label>마감일<input type="date" name="due_date"></label>
+              <label>우선순위<select name="priority"><option value="1">1 · 높음</option><option value="2" selected>2 · 보통</option><option value="3">3 · 낮음</option></select></label>
+              <label>예상(분)<input type="number" name="estimated_minutes" min="0" step="1" value="30" required inputmode="numeric"></label>
+              <label>태그<input name="tags" maxlength="120" placeholder="쉼표로 구분"></label>
+              <button type="submit" class="btn primary">추가</button>
+            </div>
+          </form>
+
+          <div class="toolbar" role="search">
+            <label class="grow">찾기<input type="search" id="fQ" placeholder="할 일 이름·태그"></label>
+            <label>상태<select id="fStatus"><option value="">전체</option><option value="open">진행 중</option><option value="done">완료</option><option value="overdue">지연</option></select></label>
+            <label>우선순위<select id="fPriority"><option value="">전체</option><option value="1">1 · 높음</option><option value="2">2 · 보통</option><option value="3">3 · 낮음</option></select></label>
+            <label>태그<select id="fTag"><option value="">전체</option></select></label>
+            <label>정렬<select id="fSort"><option value="due">마감일</option><option value="priority">우선순위</option><option value="estimate">예상 시간</option><option value="created">만든 순서</option></select></label>
+          </div>
+          <p class="sort-note" id="sortNote"></p>
+          <p class="filter-note" id="filterNote" hidden><span id="filterNoteText"></span> <button type="button" class="link" id="clearFilter">모두 보기</button></p>
+
+          <ul class="tasks" id="taskList"></ul>
+          <p class="muted" id="taskEmpty" hidden>조건에 맞는 할 일이 없습니다.</p>
+        </div>
+      </section>
+
+      <!-- ============ SEE ============ -->
+      <section class="view view-see" id="view-see" role="tabpanel" aria-labelledby="tab-see" hidden>
+        <div class="page need-plan" hidden><p>먼저 <b>Plan</b>에서 계획을 세워 주세요.</p></div>
+        <div class="page has-plan">
+          <div class="page-head">
+            <h2>돌아보기 <small id="seePlanName"></small></h2>
+          </div>
+          <form class="period" id="periodForm">
+            <label>기간 시작<input type="date" name="from"></label>
+            <label>기간 끝<input type="date" name="to"></label>
+            <button type="submit" class="btn">기간 적용</button>
+            <button type="button" class="btn ghost" id="periodAll">전체 기간</button>
+            <p class="muted small">기간을 정하면 <b>마감일이 그 기간에 드는</b> 할 일만 셉니다. 지연은 서울 시간 오늘(<span id="seeToday"></span>)보다 마감일이 앞서고 아직 완료하지 않은 할 일입니다.</p>
+          </form>
+
+          <p class="hint">숫자를 누르면 그 숫자가 나온 기록이 아래에 펼쳐집니다.</p>
+          <div class="tiles" id="tiles"></div>
+
+          <div class="evidence" id="evidence" hidden>
+            <h3 id="evTitle"></h3>
+            <p class="muted small" id="evRule"></p>
+            <ul id="evList"></ul>
+          </div>
+
+          <form class="page form review-form" id="reviewForm" autocomplete="off">
+            <h3>이번 돌아보기 남기기</h3>
+            <label>잘된 점<textarea name="went_well" maxlength="300" rows="2" placeholder="이번에 잘 된 것"></textarea></label>
+            <label><span>다음 계획으로 넘길 고칠 점 <b>한 줄</b></span><input name="lesson" required maxlength="120" placeholder="예: 예상 시간을 1.5배로 잡는다"></label>
+            <p class="muted small">저장하면 지금 화면의 집계가 그대로 함께 남습니다.</p>
+            <div class="actions"><button type="submit" class="btn primary">돌아보기 저장</button></div>
+          </form>
+
+          <h3 class="section-title">돌아보기 기록</h3>
+          <ol class="reviews" id="reviewList"></ol>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <button type="button" class="btn" id="exportBtn">내 자료 전체 내보내기 (JSON 파일 1개)</button>
+      <p class="muted small" id="syncState">서버 데이터베이스에서 불러오는 중…</p>
+      <p class="muted small">날짜는 서울 시간 기준, 시간은 모두 분 단위로 저장합니다. 자료 구조: <code>contracts/pds-schema-v2.json</code></p>
+    </footer>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

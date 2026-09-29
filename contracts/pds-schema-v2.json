@@ -1,0 +1,131 @@
+{
+  "schema": "pds-schema-v2",
+  "description": "플랜두씨 노트 최종 데이터베이스 구조 (Turso / libSQL = SQLite). lib/db.js 의 DDL 과 같은 내용이다.",
+  "database": { "engine": "Turso (libSQL, SQLite 호환)", "created_by": "lib/db.js ensureSchema() — 첫 API 요청 때 CREATE TABLE IF NOT EXISTS" },
+  "rules": {
+    "time_zone": "Asia/Seoul",
+    "date": "YYYY-MM-DD 문자열. 서울 시간 기준 날짜 (plans.start_date/end_date, tasks.due_date, reviews.period_from/period_to)",
+    "instant": "ISO 8601 UTC 문자열, 끝에 Z (예: 2026-09-29T00:40:00.000Z). 입력은 반드시 시간대(+09:00 또는 Z)를 붙여 받고, 화면에서는 서울 시간으로 바꿔 보여 준다",
+    "duration": "분(minutes) 단위 0 이상 정수. 저장·집계·화면 모두 같은 단위",
+    "priority": "1=높음, 2=보통, 3=낮음",
+    "today": "지연 판단의 '오늘'은 서버가 Asia/Seoul 기준으로 계산한 날짜",
+    "delete": "할 일 지우기는 tasks.deleted_at 을 채우는 방식. 목록·집계에서 빠진다"
+  },
+  "tables": {
+    "plans": {
+      "purpose": "계획의 현재 판",
+      "columns": {
+        "id": "INTEGER PK AUTOINCREMENT — 고쳐도 바뀌지 않는 계획 ID",
+        "title": "TEXT NOT NULL (≤80자)",
+        "start_date": "TEXT date NOT NULL",
+        "end_date": "TEXT date NOT NULL, CHECK end_date >= start_date",
+        "priority": "INTEGER NOT NULL CHECK IN (1,2,3)",
+        "success_criteria": "TEXT NOT NULL (≤300자)",
+        "estimated_minutes": "INTEGER NOT NULL ≥0 (분)",
+        "carried_from_review_id": "INTEGER NULL → reviews.id, UNIQUE(값이 있을 때) — 한 돌아보기의 고칠 점은 다음 계획 하나로만 넘어간다",
+        "carried_lesson": "TEXT NULL — 넘겨받은 고칠 점 한 줄 (넘겨받을 때 복사)",
+        "version": "INTEGER NOT NULL — 지금 판 번호",
+        "created_at": "TEXT instant",
+        "updated_at": "TEXT instant"
+      }
+    },
+    "plan_versions": {
+      "purpose": "계획의 모든 판. 1판 = 처음 세운 계획. 고칠 때마다 새 판을 더하고 예전 판은 지우지 않는다",
+      "columns": {
+        "id": "INTEGER PK",
+        "plan_id": "INTEGER NOT NULL → plans.id",
+        "version": "INTEGER NOT NULL, UNIQUE(plan_id, version)",
+        "title": "TEXT", "start_date": "TEXT date", "end_date": "TEXT date", "priority": "INTEGER",
+        "success_criteria": "TEXT", "estimated_minutes": "INTEGER (분)",
+        "change_note": "TEXT — 고친 이유",
+        "recorded_at": "TEXT instant"
+      }
+    },
+    "tasks": {
+      "purpose": "계획에 딸린 할 일",
+      "columns": {
+        "id": "INTEGER PK",
+        "plan_id": "INTEGER NOT NULL → plans.id",
+        "title": "TEXT NOT NULL (≤120자)",
+        "due_date": "TEXT date NULL — 마감일",
+        "priority": "INTEGER NOT NULL CHECK IN (1,2,3)",
+        "estimated_minutes": "INTEGER NOT NULL ≥0 (분)",
+        "status": "TEXT NOT NULL CHECK IN ('open','done')",
+        "cycle": "INTEGER NOT NULL — 완료 회차. 완료를 되돌릴 때 1 늘어난다",
+        "completed_at": "TEXT instant NULL",
+        "deleted_at": "TEXT instant NULL — 지운 할 일",
+        "created_at": "TEXT instant",
+        "updated_at": "TEXT instant"
+      }
+    },
+    "task_tags": {
+      "purpose": "할 일 태그 (할 일 1 : 태그 N)",
+      "columns": { "task_id": "INTEGER NOT NULL → tasks.id", "tag": "TEXT NOT NULL (≤20자)" },
+      "primary_key": ["task_id", "tag"]
+    },
+    "task_completions": {
+      "purpose": "완료 기록. 중복 완료를 DB 제약으로 막는다",
+      "columns": {
+        "id": "INTEGER PK",
+        "task_id": "INTEGER NOT NULL → tasks.id",
+        "cycle": "INTEGER NOT NULL — 완료한 회차",
+        "request_key": "TEXT NOT NULL UNIQUE — 같은 요청을 알아보는 키 (화면이 회차마다 하나 만들어 보냄)",
+        "completed_at": "TEXT instant",
+        "reopened_at": "TEXT instant NULL — 되돌린 시각"
+      },
+      "unique": [["task_id", "cycle"], ["request_key"]]
+    },
+    "runs": {
+      "purpose": "실행 기록(실제로 한 일). 계획·할 일 값은 바꾸지 않는다",
+      "columns": {
+        "id": "INTEGER PK",
+        "task_id": "INTEGER NOT NULL → tasks.id",
+        "started_at": "TEXT instant NOT NULL",
+        "ended_at": "TEXT instant NOT NULL, CHECK ended_at >= started_at",
+        "actual_minutes": "INTEGER NOT NULL ≥0 (분) — 실제로 걸린 시간",
+        "blocker": "TEXT — 막혔던 이유 (빈 글자 = 막힘 없음)",
+        "note": "TEXT — 메모",
+        "created_at": "TEXT instant"
+      }
+    },
+    "reviews": {
+      "purpose": "돌아보기. 저장 시점의 집계를 그대로 담는다",
+      "columns": {
+        "id": "INTEGER PK",
+        "plan_id": "INTEGER NOT NULL → plans.id",
+        "period_from": "TEXT date NULL", "period_to": "TEXT date NULL",
+        "stats_json": "TEXT — 저장 시점의 /api/stats 결과",
+        "went_well": "TEXT — 잘된 점",
+        "lesson": "TEXT NOT NULL (≤120자) — 다음 계획으로 넘길 고칠 점 한 줄",
+        "created_at": "TEXT instant"
+      }
+    }
+  },
+  "relations": [
+    "plans 1 : N plan_versions",
+    "plans 1 : N tasks",
+    "tasks 1 : N task_tags",
+    "tasks 1 : N task_completions (회차당 최대 1)",
+    "tasks 1 : N runs",
+    "plans 1 : N reviews",
+    "reviews 1 : 0..1 plans (carried_from_review_id — 다음 계획)"
+  ],
+  "aggregates": {
+    "scope": "한 계획의, 지우지 않은 할 일. 기간(from~to)을 주면 마감일이 그 기간에 드는 할 일만",
+    "planned": "대상 할 일 수",
+    "done": "대상 중 status='done' 인 수",
+    "delayed": "대상 중 status<>'done' 이고 due_date < 서울 오늘 인 수 (완료는 세지 않음)",
+    "blocked": "대상 중 blocker 가 비어 있지 않은 실행 기록이 하나라도 있는 할 일 수",
+    "estimated_minutes": "대상 할 일 estimated_minutes 합계 (없으면 0)",
+    "actual_minutes": "대상 할 일에 딸린 runs.actual_minutes 합계 (없으면 0)",
+    "diff_minutes": "actual_minutes - estimated_minutes",
+    "evidence": "각 숫자와 함께 근거 task_ids / run_ids 를 돌려준다"
+  },
+  "api": {
+    "GET /api/plans": "계획 목록", "GET /api/plans?id=": "계획 + 모든 판", "POST /api/plans": "계획 만들기 (carried_from_review_id 선택)", "PATCH /api/plans?id=": "계획 고치기 → 새 판",
+    "GET /api/tasks?plan_id=&q=&status=&priority=&tag=&sort=": "할 일 검색·거르기·정렬 (서버 SQL)", "POST /api/tasks": "할 일 만들기", "PATCH /api/tasks?id=": "할 일 고치기",
+    "POST /api/tasks?id=&action=complete": "완료 {request_key}", "POST /api/tasks?id=&action=reopen": "완료 되돌리기", "DELETE /api/tasks?id=": "할 일 지우기",
+    "GET/POST/DELETE /api/runs": "실행 기록", "GET /api/stats?plan_id=&from=&to=": "돌아보기 집계 + 근거 ID", "GET/POST /api/reviews": "돌아보기 기록",
+    "GET /api/export": "전체 자료 JSON 파일 1개"
+  }
+}
