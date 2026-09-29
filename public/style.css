@@ -340,6 +340,23 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .cal-day .kind.run { background: var(--cal-soft); }
 .cal-day .kind.late { color: var(--warn); }
 
+/* ---------- 태그 강조 ---------- */
+button.chip { font: inherit; font-size: 0.8rem; cursor: pointer; color: inherit; }
+button.chip.tag:hover { border-color: var(--ok); }
+button.chip.tag.on { background: var(--do); border-color: var(--ok); font-weight: 600; }
+button.chip:focus-visible { outline: 2px solid var(--pen); outline-offset: 1px; }
+.hl-note { margin: 0; font-size: 0.84rem; color: var(--ink-2); background: var(--do-soft); padding: 6px 10px; border-radius: 6px; }
+.hl-note[hidden] { display: none; }
+.task, .cal-item, .cal-dots i { transition: opacity 0.15s, box-shadow 0.15s; }
+.task.hl-match { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok); }
+.task.hl-dim { opacity: 0.4; }
+.task.hl-dim:hover, .task.hl-dim:focus-within { opacity: 0.85; }
+.cal-item.hl-match { box-shadow: inset 0 0 0 1.5px var(--ok); font-weight: 600; }
+.cal-item.hl-dim, .cal-dots i.hl-dim { opacity: 0.3; }
+.cal-dots i.hl-match { box-shadow: 0 0 0 1.5px var(--ok); }
+.cal-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cal-tags:empty { display: none; }
+
 /* ---------- 바닥 ---------- */
 .foot { margin-top: 20px; padding-left: 18px; display: grid; gap: 4px; justify-items: start; }
 .foot p { margin: 0; }

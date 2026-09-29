@@ -124,6 +124,7 @@
           <p class="sort-note" id="sortNote"></p>
           <p class="filter-note" id="filterNote" hidden><span id="filterNoteText"></span> <button type="button" class="link" id="clearFilter">모두 보기</button></p>
 
+          <p class="hl-note" id="hlNote" hidden></p>
           <ul class="tasks" id="taskList"></ul>
           <p class="muted" id="taskEmpty" hidden>조건에 맞는 할 일이 없습니다.</p>
         </div>
@@ -189,6 +190,8 @@
             <li><span class="lg lg-run"></span>실제로 한 일(실행 기록)</li>
           </ul>
           <p class="muted small">날짜는 서울 시간(KST) 기준입니다. 날짜를 누르면 그날의 기록이 아래에 나오고, 왼쪽 주 번호를 누르면 See의 기간이 그 주(월~일)로 설정됩니다. 달력은 저장된 기록을 보여 주기만 하고 아무것도 바꾸지 않습니다.</p>
+          <div class="cal-tags" id="calTags"></div>
+          <p class="hl-note" id="calHlNote" hidden></p>
           <div class="cal" id="calGrid" role="grid" aria-labelledby="calTitle"></div>
           <div class="cal-day" id="calDay" hidden>
             <h3 id="calDayTitle"></h3>

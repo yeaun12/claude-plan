@@ -20,6 +20,7 @@ const state = {
   evidenceKey: null,
   period: { from: '', to: '' },
   completeKeys: new Map(),
+  hlTag: null, // 눈으로만 강조하는 태그 (목록을 줄이지 않음)
   cal: { month: null, selected: null, tasks: [], runs: [] },
 };
 
@@ -291,6 +292,7 @@ function renderTasks() {
   if (state.filter.ids) $('#filterNoteText').textContent = `${state.filter.idsLabel}에서 고른 할 일 ${state.filter.ids.length}개만 보고 있습니다.`;
   $('#taskEmpty').hidden = state.tasks.length > 0;
   $('#taskList').replaceChildren(...state.tasks.map(renderTask));
+  renderHlNote('#hlNote');
 }
 
 function completeKey(task) {
@@ -301,7 +303,7 @@ function completeKey(task) {
 
 function renderTask(t) {
   const done = t.status === 'done';
-  const li = h('li', { class: `task${done ? ' done' : ''}`, id: `task-${t.id}`, dataset: { id: t.id } });
+  const li = h('li', { class: `task${done ? ' done' : ''}${hlClass(t.tags)}`, id: `task-${t.id}`, dataset: { id: t.id } });
   const check = h('button', {
     type: 'button', class: 'check', 'aria-label': done ? `${t.title} 완료 되돌리기` : `${t.title} 완료로 바꾸기`,
     title: done ? '다시 진행 중으로 되돌리기' : '완료로 바꾸기', text: done ? '✓' : '',
@@ -316,7 +318,7 @@ function renderTask(t) {
     t.overdue ? h('span', { class: 'chip warn', text: '지연' }) : null,
     t.blocked ? h('span', { class: 'chip block', text: '막힘 있었음' }) : null,
     done && t.completed_at ? h('span', { class: 'chip', text: `완료 ${fmtInstant(t.completed_at)}` }) : null,
-    t.tags.map((g) => h('span', { class: 'chip tag', text: `#${g}` })));
+    t.tags.map((g) => tagButton(g, 'chip tag')));
   const actions = h('div', { class: 'task-actions' },
     h('button', { type: 'button', class: 'btn small', text: state.openTask === t.id ? '기록 닫기' : '실행 기록', 'aria-expanded': String(state.openTask === t.id), onclick: () => toggleRuns(t.id) }),
     h('button', { type: 'button', class: 'btn small', text: '고치기', onclick: () => { state.editTask = state.editTask === t.id ? null : t.id; renderTasks(); } }),
@@ -571,6 +573,38 @@ async function submitReview(e) {
   } catch (err) { fail(err); }
 }
 
+// ---------- 태그 강조: 같은 태그는 테두리, 나머지는 흐리게 (보기만 바뀜) ----------
+function hlClass(tags) {
+  if (!state.hlTag) return '';
+  return tags && tags.includes(state.hlTag) ? ' hl-match' : ' hl-dim';
+}
+function runTags(run) {
+  const t = state.cal.tasks.find((x) => x.id === run.task_id);
+  return t ? t.tags : [];
+}
+function tagButton(tag, cls) {
+  const on = state.hlTag === tag;
+  return h('button', {
+    type: 'button', class: `${cls}${on ? ' on' : ''}`, text: `#${tag}`, 'aria-pressed': String(on),
+    title: on ? '강조 해제' : `#${tag} 강조하기`,
+    onclick: (e) => { e.stopPropagation(); setHlTag(on ? null : tag); },
+  });
+}
+function setHlTag(tag) {
+  state.hlTag = tag;
+  if (state.view === 'do') renderTasks();
+  if (state.view === 'cal') renderCalendar();
+}
+function renderHlNote(sel) {
+  const el = $(sel);
+  if (!el) return;
+  el.hidden = !state.hlTag;
+  if (state.hlTag) {
+    el.replaceChildren(`#${state.hlTag} 태그를 강조하고 있습니다. `,
+      h('button', { type: 'button', class: 'link', text: '강조 해제', onclick: () => setHlTag(null) }));
+  }
+}
+
 // ---------- 기간 빠른 선택 ----------
 function quickPeriod(kind) {
   const today = todayKst();
@@ -644,8 +678,8 @@ function renderCalendar() {
       const inPlan = plan && day >= plan.start_date && day <= plan.end_date;
       const cls = ['cal-cell', day.slice(0, 7) !== month && 'out', inPlan && 'in-plan', day === today && 'today', day === state.cal.selected && 'selected'].filter(Boolean).join(' ');
       const items = [
-        ...d.tasks.map((t) => h('span', { class: `cal-item ${t.kind}`, text: t.title })),
-        ...d.runs.map((x) => h('span', { class: 'cal-item run', text: `▶ ${x.task_title}` })),
+        ...d.tasks.map((t) => h('span', { class: `cal-item ${t.kind}${hlClass(t.tags)}`, text: t.title })),
+        ...d.runs.map((x) => h('span', { class: `cal-item run${hlClass(runTags(x))}`, text: `▶ ${x.task_title}` })),
       ];
       const count = d.tasks.length + d.runs.length;
       cells.push(h('button', {
@@ -657,10 +691,15 @@ function renderCalendar() {
       items.slice(0, 3),
       items.length > 3 ? h('span', { class: 'cal-more', text: `+${items.length - 3}` }) : null,
       count ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' },
-        d.tasks.map((t) => h('i', { class: `d-${t.kind}` })), d.runs.map(() => h('i', { class: 'd-run' }))) : null));
+        d.tasks.map((t) => h('i', { class: `d-${t.kind}${hlClass(t.tags)}` })), d.runs.map((x) => h('i', { class: `d-run${hlClass(runTags(x))}` }))) : null));
     }
   }
   $('#calGrid').replaceChildren(...cells);
+  const tags = [...new Set(state.cal.tasks.flatMap((t) => t.tags))].sort();
+  $('#calTags').replaceChildren(...(tags.length
+    ? [h('span', { class: 'muted small', text: '태그 강조' }), ...tags.map((g) => tagButton(g, 'chip tag'))]
+    : []));
+  renderHlNote('#calHlNote');
   renderCalDay();
 }
 
