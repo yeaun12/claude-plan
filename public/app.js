@@ -624,7 +624,10 @@ function bind() {
 }
 
 async function init() {
-  $('#today').textContent = `오늘 ${fmtDate(todayKst())} (서울)`;
+  $('#today').textContent = `Today ${fmtDate(todayKst())} KST`;
+  $('#today').title = '한국 표준시(서울 시간) 기준 날짜입니다. 지연 판단도 이 날짜로 합니다.';
+  const notice = $('#publicNotice');
+  notice.addEventListener('toggle', () => { notice.querySelector('.notice-hint').textContent = notice.open ? '접기' : '펼치기'; });
   bind();
   const r = readHash();
   state.planId = r.planId;

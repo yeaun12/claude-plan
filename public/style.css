@@ -75,7 +75,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .masthead { position: relative; padding-left: 18px; border-left: 2px solid var(--margin-line); }
 .brand-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .brand { font: 400 2.6rem/1 var(--hand); letter-spacing: 0.01em; }
-.brand-word { font-family: var(--sans); font-size: 1.1rem; font-weight: 600; vertical-align: middle; margin-left: 4px; }
 .hl { padding: 0 0.18em; border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .hl-plan { background: linear-gradient(transparent 38%, var(--plan-soft) 38%); }
 .hl-do { background: linear-gradient(transparent 38%, var(--do-soft) 38%); }
@@ -91,7 +90,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transform: rotate(-0.3deg);
   font-size: 0.93rem;
 }
-.notice strong { margin-right: 6px; }
+.notice summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.notice summary::-webkit-details-marker { display: none; }
+.notice summary::before { content: '▾'; font-size: 0.8rem; }
+.notice:not([open]) summary::before { content: '▸'; }
+.notice summary:focus-visible { outline: 2px solid var(--pen); outline-offset: 2px; border-radius: 3px; }
+.notice-hint { font-size: 0.78rem; color: var(--ink-2); }
+.notice p { margin: 4px 0 0 18px; }
+.notice:not([open]) { padding-top: 6px; padding-bottom: 6px; }
 
 .plan-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .plan-picker label { font-size: 0.85rem; color: var(--ink-2); }
