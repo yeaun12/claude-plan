@@ -26,27 +26,15 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #1c1b21;
-    --paper-2: #24232b;
-    --grid: rgba(180, 200, 255, 0.05);
-    --margin-line: rgba(240, 120, 120, 0.25);
-    --ink: #ece8df;
-    --ink-2: #c3beb3;
-    --muted: #9a95a3;
-    --line: #3a3843;
-    --pen: #9db6ff;
-    --pen-ink: #13131a;
-    --plan-soft: rgba(255, 224, 102, 0.28);
-    --do-soft: rgba(159, 227, 198, 0.25);
-    --see-soft: rgba(255, 184, 203, 0.25);
-    --warn: #ff9a73;
-    --ok: #7fd9ad;
-    --card: rgba(255, 255, 255, 0.04);
-    --shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.8);
-    color-scheme: dark;
-  }
+:root[data-theme="white"] {
+  --paper: #ffffff;
+  --paper-2: #f3f3f6;
+  --grid: transparent;
+  --margin-line: #e6e6ec;
+  --line: #e2e2e8;
+  --card: #ffffff;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.03), 0 10px 28px -18px rgba(20, 20, 40, 0.3);
+  color-scheme: light;
 }
 :root[data-theme="dark"] {
   --paper: #1c1b21; --paper-2: #24232b; --grid: rgba(180, 200, 255, 0.05); --margin-line: rgba(240, 120, 120, 0.25);
@@ -108,6 +96,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .plan-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .plan-picker label { font-size: 0.85rem; color: var(--ink-2); }
 .plan-picker select { min-width: 0; flex: 1 1 220px; max-width: 420px; }
+
+.brand-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.theme-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--paper-2); }
+.theme-switch button { border: none; background: transparent; border-radius: 999px; padding: 4px 12px; font-size: 0.82rem; color: var(--ink-2); cursor: pointer; }
+.theme-switch button[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); font-weight: 600; }
+.theme-switch button:focus-visible { outline: 2px solid var(--pen); outline-offset: 1px; }
 
 /* ---------- 인덱스 탭 ---------- */
 .tabs {

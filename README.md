@@ -7,6 +7,8 @@
 - 서버: `api/*.js` (Vercel 서버리스 함수) + `lib/` (DB 연결·검사·집계)
 - DB 구조: `contracts/pds-schema-v2.json`
 - 자동 검사: `scripts/check.mjs` → 결과 `evidence/check-result.md`
+- 화면 모드: 흰 바탕(기본)·모눈 노트·어둡게 — 오른쪽 위에서 전환, 이 브라우저에 기억
+- **배포·자료 입력·제출까지 단계별 안내: [`GUIDE.md`](GUIDE.md)**
 
 ## 배포 (Vercel + Turso)
 

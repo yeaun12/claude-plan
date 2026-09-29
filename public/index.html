@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Nanum+Pen+Script&display=swap">
   <link rel="stylesheet" href="style.css">
+  <script src="theme.js"></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -17,7 +18,14 @@
     <header class="masthead">
       <div class="brand-row">
         <h1 class="brand"><span class="hl hl-plan">Plan</span> <span class="hl hl-do">Do</span> <span class="hl hl-see">See</span> <span class="brand-word">노트</span></h1>
-        <p class="today" id="today"></p>
+        <div class="brand-tools">
+          <div class="theme-switch" role="group" aria-label="화면 모드">
+            <button type="button" data-theme-choice="white" aria-pressed="false">흰 바탕</button>
+            <button type="button" data-theme-choice="grid" aria-pressed="false">모눈 노트</button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false">어둡게</button>
+          </div>
+          <p class="today" id="today"></p>
+        </div>
       </div>
       <p class="notice" id="publicNotice" role="note"><strong>공개 안내</strong> 지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요.</p>
       <div class="plan-picker">
