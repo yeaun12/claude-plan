@@ -1,0 +1,19 @@
+{
+  "environment": "local isolated test database",
+  "passed": 96,
+  "failed": 0,
+  "checks": [
+    "signup, duplicate normalized username, login and generic failure",
+    "different salted password hashes for identical passwords (values excluded)",
+    "bidirectional cross-account read, update, delete and parent-ID denial",
+    "scoped lists, ignored forged owner IDs and unchanged victim snapshots",
+    "anonymous denial, cross-origin denial and request-header enforcement",
+    "eight-hour expiry, logout and password-change invalidation",
+    "observation date/rule-change boundaries using synthetic fixtures",
+    "scoped export and transactional account deletion"
+  ],
+  "browser": "signup, login, plan save/reload, observation form, logout and back navigation passed; no page errors",
+  "production_verified": false,
+  "real_five_day_observation_complete": false,
+  "sensitive_detailed_evidence": "excluded from public repository"
+}

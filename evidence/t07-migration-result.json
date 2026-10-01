@@ -1,0 +1,15 @@
+{
+  "environment": "local rehearsal using supplied T06 backup; production NOT migrated",
+  "executed_at": "2026-09-30T12:54:26.169Z",
+  "counts": {
+    "plans": 3,
+    "plan_versions": 5,
+    "tasks": 9,
+    "task_tags": 20,
+    "task_completions": 4,
+    "runs": 3,
+    "reviews": 1
+  },
+  "all_original_fields_and_ids_equal": true,
+  "repeat_migration_rejected": true
+}

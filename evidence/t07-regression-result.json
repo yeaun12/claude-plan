@@ -1,0 +1,7 @@
+{
+  "environment": "local isolated DB",
+  "executed_at": "2026-09-30T12:57:53.442594+00:00",
+  "passed": 38,
+  "failed": 0,
+  "note": "37 existing T06 checks plus T07 replacement of the obsolete unauthenticated-public notice check. Original T06 evidence is retained separately."
+}

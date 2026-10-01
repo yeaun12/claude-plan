@@ -1,0 +1,38 @@
+import {createRequire} from 'node:module';
+const {chromium}=createRequire(import.meta.url)('playwright');
+import {randomBytes} from 'node:crypto';
+import assert from 'node:assert/strict';
+const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
+const page=await browser.newPage({viewport:{width:1440,height:1100}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const base=process.argv[2]||'http://localhost:3107';
+const username='ui_'+Date.now(), password=randomBytes(24).toString('hex');
+try {
+ await page.goto(base+'/#do?p=999');
+ await page.locator('#authMessage').filter({hasText:'로그인'}).waitFor();
+ assert(await page.locator('#privateApp').isHidden());
+ await page.screenshot({path:'/tmp/t07-login.png',fullPage:true});
+ await page.locator('#authToggle').click();
+ await page.locator('#authForm [name=username]').fill(username);
+ await page.locator('#authForm [name=password]').fill(password);
+ await page.locator('#authSubmit').click();
+ await page.getByText('가입했습니다. 로그인해 주세요.',{exact:true}).waitFor();
+ await page.locator('#authForm [name=password]').fill(password);
+ await page.locator('#authSubmit').click();
+ await page.locator('#privateApp').waitFor({state:'visible'});
+ await page.locator('#tab-plan').click();
+ await page.locator('#planForm [name=title]').fill('UI test');
+ await page.locator('#planForm [name=estimated_minutes]').fill('10');
+ await page.locator('#planForm [name=success_criteria]').fill('UI test saved');
+ await page.locator('#planSubmit').click();
+ await page.locator('#pdTitle').filter({hasText:'UI test'}).waitFor();
+ await page.reload();await page.locator('#pdTitle').filter({hasText:'UI test'}).waitFor();
+ assert(await page.locator('#observationContent form').count()===1);
+ await page.screenshot({path:'/tmp/t07-app.png',fullPage:true});
+ await page.locator('#logoutBtn').click();await page.locator('#authPanel').waitFor({state:'visible'});
+ assert(await page.locator('#privateApp').isHidden());
+ await page.goBack();await page.waitForTimeout(500);
+ assert(await page.locator('#privateApp').isHidden());
+ assert.deepEqual(errors,[]);
+ console.log('PASS browser: anonymous gate, signup, login, save, reload, observation form, logout, back navigation, no JS errors');
+}finally{await browser.close();}

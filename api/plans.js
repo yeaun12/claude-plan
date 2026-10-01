@@ -22,17 +22,17 @@ async function getPlan(id) {
 }
 
 export default handler({
-  async GET({ res, q }) {
+  async GET({ res, q, user }) {
     if (q.id) return send(res, 200, await getPlan(v.id(q.id)));
     const plans = await all(
       `SELECT p.*,
         (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = p.id AND t.deleted_at IS NULL) AS task_count
-       FROM plans p ORDER BY p.start_date DESC, p.id DESC`
+       FROM plans p WHERE p.user_id = ? ORDER BY p.start_date DESC, p.id DESC`, [user.id]
     );
     send(res, 200, { plans });
   },
 
-  async POST({ res, body }) {
+  async POST({ res, body, user }) {
     const f = readPlanFields(body);
     let carriedLesson = null;
     let carriedFrom = null;
@@ -46,10 +46,10 @@ export default handler({
     const tx = await db().transaction('write');
     try {
       const r = await tx.execute({
-        sql: `INSERT INTO plans (title, start_date, end_date, priority, success_criteria, estimated_minutes,
+        sql: `INSERT INTO plans (user_id, title, start_date, end_date, priority, success_criteria, estimated_minutes,
                 carried_from_review_id, carried_lesson, version, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-        args: [f.title, f.start_date, f.end_date, f.priority, f.success_criteria, f.estimated_minutes,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        args: [user.id, f.title, f.start_date, f.end_date, f.priority, f.success_criteria, f.estimated_minutes,
           carriedFrom, carriedLesson, now, now],
       });
       const id = Number(r.lastInsertRowid);
@@ -93,4 +93,4 @@ export default handler({
     ], 'write');
     send(res, 200, await getPlan(id));
   },
-});
+}, { resource: 'plans' });

@@ -399,3 +399,16 @@ button.chip:focus-visible { outline: 2px solid var(--pen); outline-offset: 1px; 
   .task.flash { animation: none; box-shadow: 0 0 0 3px var(--see); }
   .toast { transition: none; }
 }
+
+/* T07: 인증 확인 전에는 개인 기록 영역을 렌더링하지 않는다. */
+[hidden] { display: none !important; }
+.auth-shell { max-width: 480px; margin: 8vh auto; padding: 32px; border: 1px solid var(--line, #ddd); border-radius: 20px; background: var(--paper, #fff); }
+.auth-shell .form, #passwordForm, #deleteForm { display: grid; gap: 16px; margin-top: 20px; }
+.auth-shell label, #passwordForm label, #deleteForm label { display: grid; gap: 8px; }
+.auth-shell input { width: 100%; }
+#authMessage { min-height: 1.5em; }
+.account-bar { justify-content: flex-end; margin: 12px 0; }
+#observationContent form { display: grid; gap: 12px; }
+#observationContent label { display: grid; gap: 6px; }
+#observationContent table { width: 100%; border-collapse: collapse; margin: 18px 0; }
+#observationContent th, #observationContent td { text-align: left; border-bottom: 1px solid #ddd; padding: 8px; overflow-wrap: anywhere; }

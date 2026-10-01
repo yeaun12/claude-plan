@@ -1,17 +1,19 @@
 {
   "name": "pds-note",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "플랜두씨 노트 — 계획(Plan) → 실제로 한 일(Do) → 돌아보기(See)를 서버 DB로 잇는 다이어리",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "check:auth": "node scripts/run-local-checks.mjs scripts/check-auth.mjs",
+    "check:regression": "node scripts/run-local-checks.mjs scripts/check.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": "24.x"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.0"
+    "@libsql/client": "0.15.15"
   }
 }

@@ -45,13 +45,16 @@ function h(tag, props, ...children) {
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { 'Content-Type': 'application/json', 'X-PDS-Request': '1' },
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   });
   let data = null;
   try { data = await res.json(); } catch { /* 빈 응답 */ }
-  if (!res.ok) throw new Error((data && data.error) || `요청 실패 (${res.status})`);
+  if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/api/auth')) location.reload();
+    throw new Error((data && data.error) || `요청 실패 (${res.status})`);
+  }
   markSynced();
   return data;
 }
@@ -794,6 +797,7 @@ function bind() {
   $('#reviewForm').addEventListener('submit', submitReview);
   $('#exportBtn').addEventListener('click', exportAll);
   window.addEventListener('hashchange', () => {
+    if ($('#privateApp').hidden) return;
     const r = readHash();
     if (r.planId && r.planId !== state.planId && state.plans.some((p) => p.id === r.planId)) {
       selectPlan(r.planId, r.view).catch(fail);
@@ -810,12 +814,97 @@ async function init() {
   const r = readHash();
   state.planId = r.planId;
   try {
+    const session = await api('/api/auth');
+    $('#authPanel').hidden = true;
+    $('#privateApp').hidden = false;
+    $('#accountName').textContent = session.user.username + ' 님의 노트';
     await loadPlans();
     await setView(r.view);
+    await renderObservation();
   } catch (err) {
-    $('#syncState').textContent = '서버 데이터베이스에 연결하지 못했습니다.';
-    fail(err);
+    if ($('#privateApp').hidden) $('#authMessage').textContent = err.message;
+    else fail(err);
   }
 }
 
+let signupMode = false;
+$('#authToggle').addEventListener('click', () => {
+  signupMode = !signupMode;
+  $('#authTitle').textContent = signupMode ? '나만의 노트 만들기' : '내 기록에 로그인';
+  $('#authSubmit').textContent = signupMode ? '회원가입' : '로그인';
+  $('#authToggle').textContent = signupMode ? '로그인으로 전환' : '회원가입으로 전환';
+  $('#authForm').elements.password.autocomplete = signupMode ? 'new-password' : 'current-password';
+  $('#authMessage').textContent = '';
+});
+$('#authForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('#authSubmit');btn.disabled = true;
+  try {
+    await api('/api/auth?action=' + (signupMode ? 'signup' : 'login'), {method:'POST',body:Object.fromEntries(new FormData(e.target))});
+    e.target.elements.password.value = '';
+    if(signupMode) { $('#authToggle').click();$('#authMessage').textContent = '가입했습니다. 로그인해 주세요.'; }
+    else location.reload();
+  } catch(err) {$('#authMessage').textContent = err.message;} finally {btn.disabled=false;}
+});
+$('#logoutBtn').addEventListener('click', async () => {
+  try {await api('/api/auth?action=logout',{method:'POST',body:{}});location.replace('/');} catch(err){fail(err);}
+});
+for(const [id,action,method] of [['passwordForm','password','POST'],['deleteForm','delete','DELETE']]) {
+  $("#"+id).addEventListener('submit',async e=>{
+    e.preventDefault();
+    if(action==='delete' && !confirm('계정과 모든 기록을 영구 삭제할까요? 되돌릴 수 없습니다.')) return;
+    const button=e.target.querySelector('button');button.disabled=true;
+    try {await api('/api/auth?action='+action,{method,body:Object.fromEntries(new FormData(e.target))});e.target.reset();location.replace('/');}
+    catch(err){fail(err);}finally{button.disabled=false;}
+  });
+}
 init();
+
+async function renderObservation() {
+  const data=await api('/api/observation');
+  const box=$('#observationContent');box.replaceChildren();
+  const input=(name,label,value='',multiline=false)=>h('label',{},label,h(multiline?'textarea':'input',{name,required:true,value:multiline?undefined:value,rows:multiline?2:undefined},...(multiline?[value]:[])));
+  const submitForm=(form,action)=>{
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();const button=form.querySelector('button');button.disabled=true;
+      try {await api('/api/observation?action='+action,{method:'POST',body:Object.fromEntries(new FormData(form))});await renderObservation();toast('관찰 기록을 저장했습니다.');}
+      catch(err){fail(err);button.disabled=false;}
+    });
+    box.append(form);
+  };
+  const dailyFields=()=>[
+    h('label',{},'오늘 관찰값 (정수)',h('input',{name:'value',type:'number',min:0,max:100000,step:1,required:true})),
+    input('note','근거 기록·오늘 실제로 한 일','',true),
+  ];
+  if(!data.observation) {
+    const form=h('form',{},
+      input('question','관찰 질문','하루 첫 작업을 미리 정하면 실제 집중 시간이 늘어날까?'),
+      input('metric','지표 한 개','하루 실제 집중 시간 합계'),
+      input('unit','단위','분'),
+      input('calculation','같게 유지할 계산 규칙','서울 날짜별 실제 집중 시간(분)을 합산한다. 휴식은 제외한다.',true),
+      input('plan_rule','변경 전 계획 규칙','하루 할 일을 시작할 때 정한다.'),
+      input('missing','누락 처리','기록이 없는 날은 제외하고 실제 기록일 5일을 채운다. 0으로 대체하지 않는다.'),
+      input('duplicate','중복 처리','같은 실행 기록 ID는 한 번만 합산한다. 하루 관찰은 한 번 저장한다.'),
+      input('outlier','이상치 처리','큰 값도 원기록을 확인하고 실제 값이면 그대로 포함한다.'),
+      input('rounding','반올림','원기록은 정수 분. 합계는 반올림하지 않고 평균은 소수 둘째 자리까지 반올림한다.'),
+      input('week_start','주 시작 요일','월요일'),...dailyFields(),
+      h('button',{type:'submit',class:'btn primary'},'규칙 확정 및 실제 1일차 기록 저장'));
+    submitForm(form,'start');return;
+  }
+  const o=data.observation;
+  box.append(h('h3',{},o.config.question));
+  const labels={metric:'지표',unit:'단위',calculation:'계산',plan_rule:'변경 전 규칙',missing:'누락',duplicate:'중복',outlier:'이상치',rounding:'반올림',week_start:'주 시작'};
+  const detail=h('details',{},h('summary',{},'1일차에 고정한 규칙 보기'));
+  for(const [k,label] of Object.entries(labels)) detail.append(h('p',{},`${label}: ${o.config[k]}`));
+  box.append(detail);
+  const table=h('table',{},h('thead',{},h('tr',{},...['날짜 (서울)','값 · '+o.config.unit,'근거'].map(x=>h('th',{},x)))),h('tbody',{},...data.days.map(d=>h('tr',{},h('td',{},d.date),h('td',{},d.value),h('td',{},d.note)))));
+  box.append(table,h('p',{},`총 ${data.total.count}/5일 · 합계 ${data.total.sum} ${o.config.unit} · 평균 ${data.total.mean ?? '—'} ${o.config.unit}`),h('p',{},`변경 전(1~2일): 합계 ${data.before.sum}, 평균 ${data.before.mean ?? '—'} / 변경 후(3~5일): 합계 ${data.after.sum}, 평균 ${data.after.mean ?? '—'} (${o.config.unit})`));
+  if(o.change) box.append(h('p',{},`규칙 변경: ${o.change.plan_rule}`),h('p',{},`이유: ${o.change.reason} · ${fmtInstant(o.changed_at)} KST · 참조 기록 #${o.change.reference_day_ids.join(', #')}`));
+  if(data.days.length===2 && !o.change) {
+    submitForm(h('form',{},h('h3',{},'3일차 전, 계획 규칙 하나 바꾸기'),input('plan_rule','새 계획 규칙'),input('reason','1~2일차를 근거로 한 변경 이유','',true),h('button',{type:'submit',class:'btn'},'규칙 변경 기록 저장')),'change');
+  } else if(data.days.length<5 && !data.days.some(d=>d.date===data.today)) {
+    submitForm(h('form',{},h('h3',{},`${data.days.length+1}일차 · ${data.today}`),...dailyFields(),h('button',{type:'submit',class:'btn'},'오늘 실제 관찰 저장')),'day');
+  } else box.append(h('p',{},data.days.length===5?'5일 기록을 완료했습니다. 화면 합계·평균을 직접 계산한 값과 대조해 주세요.':'오늘 기록이 저장됐습니다. 다음 실제 날짜에 이어서 기록하세요.'));
+}
+
+window.addEventListener('pageshow', e => { if(e.persisted) location.reload(); });

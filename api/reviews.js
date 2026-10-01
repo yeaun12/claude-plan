@@ -3,10 +3,10 @@ import { handler, send, db, one, all, v, nowIso, HttpError } from '../lib/db.js'
 import { computeStats } from '../lib/stats.js';
 
 export default handler({
-  async GET({ res, q }) {
-    const args = [];
-    let where = '';
-    if (q.plan_id) { where = 'WHERE r.plan_id = ?'; args.push(v.id(q.plan_id, 'plan_id')); }
+  async GET({ res, q, user }) {
+    const args = [user.id];
+    let where = 'WHERE p.user_id = ?';
+    if (q.plan_id) { where += ' AND r.plan_id = ?'; args.push(v.id(q.plan_id, 'plan_id')); }
     const reviews = await all(
       `SELECT r.*, p.title AS plan_title, n.id AS next_plan_id, n.title AS next_plan_title
        FROM reviews r JOIN plans p ON p.id = r.plan_id
@@ -15,7 +15,7 @@ export default handler({
     send(res, 200, { reviews: reviews.map((r) => ({ ...r, stats: JSON.parse(r.stats_json) })) });
   },
 
-  async POST({ res, body }) {
+  async POST({ res, body, user }) {
     const planId = v.id(body.plan_id, 'plan_id');
     const from = v.date(body.period_from, '기간 시작', { required: false });
     const to = v.date(body.period_to, '기간 끝', { required: false });
@@ -31,4 +31,4 @@ export default handler({
     const saved = await one('SELECT * FROM reviews WHERE id = ?', [Number(r.lastInsertRowid)]);
     send(res, 201, { ...saved, stats });
   },
-});
+}, { resource: 'reviews' });

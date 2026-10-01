@@ -2,9 +2,10 @@
 import { handler, send, all, nowIso, todayKst, SCHEMA_VERSION, TIME_ZONE } from '../lib/db.js';
 
 export default handler({
-  async GET({ res }) {
+  async GET({ res, user }) {
     const data = {
       schema: SCHEMA_VERSION,
+      account: {id:user.id, username:user.username, created_at:user.created_at},
       exported_at: nowIso(),
       rules: {
         date_fields: 'YYYY-MM-DD, 서울 시간(Asia/Seoul) 기준 날짜',
@@ -13,13 +14,15 @@ export default handler({
         priority: '1=높음, 2=보통, 3=낮음',
         time_zone: TIME_ZONE,
       },
-      plans: await all('SELECT * FROM plans ORDER BY id'),
-      plan_versions: await all('SELECT * FROM plan_versions ORDER BY plan_id, version'),
-      tasks: await all('SELECT * FROM tasks ORDER BY id'),
-      task_tags: await all('SELECT * FROM task_tags ORDER BY task_id, tag'),
-      task_completions: await all('SELECT * FROM task_completions ORDER BY id'),
-      runs: await all('SELECT * FROM runs ORDER BY id'),
-      reviews: await all('SELECT * FROM reviews ORDER BY id'),
+      observations: await all('SELECT * FROM observations WHERE user_id=?', [user.id]),
+      observation_days: await all('SELECT * FROM observation_days WHERE observation_id IN (SELECT id FROM observations WHERE user_id=?) ORDER BY date', [user.id]),
+      plans: await all('SELECT * FROM plans WHERE user_id=? ORDER BY id', [user.id]),
+      plan_versions: await all('SELECT * FROM plan_versions WHERE plan_id IN (SELECT id FROM plans WHERE user_id=?) ORDER BY plan_id, version', [user.id]),
+      tasks: await all('SELECT * FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE user_id=?) ORDER BY id', [user.id]),
+      task_tags: await all('SELECT * FROM task_tags WHERE task_id IN (SELECT id FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE user_id=?)) ORDER BY task_id, tag', [user.id]),
+      task_completions: await all('SELECT * FROM task_completions WHERE task_id IN (SELECT id FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE user_id=?)) ORDER BY id', [user.id]),
+      runs: await all('SELECT * FROM runs WHERE task_id IN (SELECT id FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE user_id=?)) ORDER BY id', [user.id]),
+      reviews: await all('SELECT * FROM reviews WHERE plan_id IN (SELECT id FROM plans WHERE user_id=?) ORDER BY id', [user.id]),
     };
     send(res, 200, data, {
       'Content-Disposition': `attachment; filename="pds-note-export-${todayKst().replaceAll('-', '')}.json"`,

@@ -8,6 +8,8 @@ if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(BASE)) {
   process.exit(2);
 }
 
+const password = (await import('node:crypto')).randomBytes(24).toString('base64url');
+let cookie = '';
 const results = [];
 function check(id, desc, ok, detail = '') {
   results.push({ id, desc, ok: Boolean(ok), detail });
@@ -17,7 +19,7 @@ function check(id, desc, ok, detail = '') {
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(BASE + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { 'Content-Type': 'application/json', 'X-PDS-Request':'1', Cookie:cookie },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -29,6 +31,11 @@ async function api(path, { method = 'GET', body } = {}) {
 const kstToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
 const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
+const username='regression_'+Date.now();
+await api('/api/auth?action=signup',{method:'POST',body:{username,password}});
+const login=await api('/api/auth?action=login',{method:'POST',body:{username,password}});
+if(login.status!==200) throw new Error('검사용 로그인 실패');
+cookie=login.headers.get('set-cookie').split(';')[0];
 const before = await api('/api/plans');
 if (before.data.plans.length) {
   console.error('빈 검사용 DB가 아닙니다. 새 DB 파일로 서버를 띄운 뒤 다시 실행해 주세요.');
@@ -173,7 +180,7 @@ const xss = '<script>alert(1)</script><img src=x onerror=alert(2)>';
 const xt = (await api('/api/tasks', { method: 'POST', body: { plan_id: plan.id, title: xss, priority: 2, estimated_minutes: 1 } })).data;
 check('T06-C57(API)', '스크립트 모양 글자가 바뀌지 않고 글자 그대로 저장·반환된다', xt.title === xss);
 const html = await (await fetch(BASE + '/')).text();
-check('T06-C82', '첫 화면 공개 안내 문구', html.includes('지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요'));
+check('T07-C97', 'T06 공개 안내를 계정 보호 안내로 교체', html.includes('내 기록 보호 안내') && html.includes('id="privateApp" hidden'));
 const appJs = await (await fetch(BASE + '/app.js')).text();
 check('T06-C58(화면)', '브라우저 코드에 innerHTML·비밀값 이름이 없다', !/innerHTML|TURSO|authToken/i.test(appJs));
 

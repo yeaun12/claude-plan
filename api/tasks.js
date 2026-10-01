@@ -62,9 +62,9 @@ function readTaskFields(body, { partial = false } = {}) {
 }
 
 export default handler({
-  async GET({ res, q }) {
-    const where = ['t.deleted_at IS NULL'];
-    const args = [];
+  async GET({ res, q, user }) {
+    const where = ['t.deleted_at IS NULL', 't.plan_id IN (SELECT id FROM plans WHERE user_id = ?)'];
+    const args = [user.id];
     if (q.plan_id) { where.push('t.plan_id = ?'); args.push(v.id(q.plan_id, 'plan_id')); }
     if (q.id) {
       const ids = String(q.id).split(',').map((x) => v.id(x));
@@ -90,9 +90,9 @@ export default handler({
     });
   },
 
-  async POST({ res, q, body }) {
+  async POST({ res, q, body, user }) {
     // 완료 / 되돌리기
-    if (q.action === 'complete') return complete(res, v.id(q.id), body);
+    if (q.action === 'complete') return complete(res, v.id(q.id), { ...body, request_key: `${user.id}:` + v.text(body.request_key, 'request_key', { max: 60 }) });
     if (q.action === 'reopen') return reopen(res, v.id(q.id));
 
     const planId = v.id(body.plan_id, 'plan_id');
@@ -146,7 +146,7 @@ export default handler({
     await db().execute({ sql: 'UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL', args: [nowIso(), nowIso(), id] });
     send(res, 200, { deleted: id });
   },
-});
+}, { resource: 'tasks' });
 
 // 완료는 (할 일, 회차)마다 한 건만 쌓인다. 두 번 눌러도, 요청 두 개가 동시에 와도
 // task_completions 의 UNIQUE(task_id, cycle)·UNIQUE(request_key) 제약이 두 번째를 막는다.

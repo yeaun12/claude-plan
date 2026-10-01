@@ -2,9 +2,9 @@
 import { handler, send, db, one, all, v, nowIso, HttpError } from '../lib/db.js';
 
 export default handler({
-  async GET({ res, q }) {
-    const where = ['t.deleted_at IS NULL'];
-    const args = [];
+  async GET({ res, q, user }) {
+    const where = ['t.deleted_at IS NULL', 't.plan_id IN (SELECT id FROM plans WHERE user_id = ?)'];
+    const args = [user.id];
     if (q.task_id) { where.push('r.task_id = ?'); args.push(v.id(q.task_id, 'task_id')); }
     if (q.plan_id) { where.push('t.plan_id = ?'); args.push(v.id(q.plan_id, 'plan_id')); }
     if (q.id) {
@@ -18,7 +18,7 @@ export default handler({
     send(res, 200, { runs });
   },
 
-  async POST({ res, body }) {
+  async POST({ res, body, user }) {
     const taskId = v.id(body.task_id, 'task_id');
     if (!(await one('SELECT id FROM tasks WHERE id = ? AND deleted_at IS NULL', [taskId]))) {
       throw new HttpError(404, '그 할 일을 찾을 수 없습니다.');
@@ -45,4 +45,4 @@ export default handler({
     if (!r.rowsAffected) throw new HttpError(404, '그 실행 기록을 찾을 수 없습니다.');
     send(res, 200, { deleted: id });
   },
-});
+}, { resource: 'runs' });
