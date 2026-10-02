@@ -811,21 +811,30 @@ async function init() {
   const notice = $('#publicNotice');
   notice.addEventListener('toggle', () => { notice.querySelector('.notice-hint').textContent = notice.open ? '접기' : '펼치기'; });
   bind();
+  try {
+    await enterApp(await api('/api/auth'));
+  } catch (err) {
+    $('#authPanel').hidden = false;
+    $('#authMessage').textContent = err.message;
+  } finally {
+    $('#sessionLoading').hidden = true;
+  }
+}
+
+async function enterApp(session) {
   const r = readHash();
   state.planId = r.planId;
-  try {
-    const session = await api('/api/auth');
-    $('#authPanel').hidden = true;
-    $('#privateApp').hidden = false;
-    $('#accountName').textContent = session.user.username + ' 님의 노트';
-    await loadPlans();
-    await setView(r.view);
-    await renderObservation();
-    mountFocusClock(session.user.id);
-  } catch (err) {
-    if ($('#privateApp').hidden) $('#authMessage').textContent = err.message;
-    else fail(err);
-  }
+  $('#authPanel').hidden = true;
+  $('#sessionLoading').hidden = true;
+  $('#privateApp').hidden = false;
+  $('#accountName').textContent = session.user.username + ' 님의 노트';
+  $('#syncState').textContent = '기록을 불러오는 중…';
+  mountFocusClock(session.user.id);
+  const results = await Promise.allSettled([
+    loadPlans().then(() => setView(r.view)),
+    renderObservation(),
+  ]);
+  for (const result of results) if (result.status === 'rejected') fail(result.reason);
 }
 
 let signupMode = false;
@@ -840,12 +849,16 @@ $('#authToggle').addEventListener('click', () => {
 $('#authForm').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('#authSubmit');btn.disabled = true;
+  const registering = signupMode;
+  $('#authToggle').disabled = true;
+  btn.textContent = registering ? '가입 중…' : '로그인 중…';
+  $('#authMessage').textContent = '잠시만 기다려 주세요.';
   try {
-    await api('/api/auth?action=' + (signupMode ? 'signup' : 'login'), {method:'POST',body:Object.fromEntries(new FormData(e.target))});
+    const session = await api('/api/auth?action=' + (registering ? 'signup' : 'login'), {method:'POST',body:Object.fromEntries(new FormData(e.target))});
     e.target.elements.password.value = '';
-    if(signupMode) { $('#authToggle').click();$('#authMessage').textContent = '가입했습니다. 로그인해 주세요.'; }
-    else location.reload();
-  } catch(err) {$('#authMessage').textContent = err.message;} finally {btn.disabled=false;}
+    if(registering) { $('#authToggle').disabled = false;$('#authToggle').click();$('#authMessage').textContent = '가입했습니다. 로그인해 주세요.'; }
+    else await enterApp(session);
+  } catch(err) {$('#authMessage').textContent = err.message;} finally {btn.disabled=false;$('#authToggle').disabled=false;btn.textContent=signupMode?'회원가입':'로그인';}
 });
 $('#logoutBtn').addEventListener('click', async () => {
   try {await api('/api/auth?action=logout',{method:'POST',body:{}});location.replace('/');} catch(err){fail(err);}
