@@ -821,6 +821,7 @@ async function init() {
     await loadPlans();
     await setView(r.view);
     await renderObservation();
+    mountFocusClock(session.user.id);
   } catch (err) {
     if ($('#privateApp').hidden) $('#authMessage').textContent = err.message;
     else fail(err);
@@ -862,7 +863,7 @@ init();
 
 async function renderObservation() {
   const data=await api('/api/observation');
-  const box=$('#observationContent');box.replaceChildren();
+  const box=$('#observationContent');box.dataset.unit=data.observation?.config.unit||'분';box.replaceChildren();
   const input=(name,label,value='',multiline=false)=>h('label',{},label,h(multiline?'textarea':'input',{name,required:true,value:multiline?undefined:value,rows:multiline?2:undefined},...(multiline?[value]:[])));
   const submitForm=(form,action)=>{
     form.addEventListener('submit',async e=>{
@@ -908,3 +909,67 @@ async function renderObservation() {
 }
 
 window.addEventListener('pageshow', e => { if(e.persisted) location.reload(); });
+
+// 날짜별 측정은 브라우저에 보관하고 관찰 입력 반영 후 서버에 저장한다.
+function mountFocusClock(userId) {
+  const key = `pds-focus-clock-v1:${userId}`;
+  const panel = h('section', {class:'page'}, h('h2',{},'오늘의 집중 스톱워치'));
+  const time = h('p',{class:'focus-clock-time'},'00:00:00');
+  const message = h('p',{'role':'status'},'작업할 때 시작하고, 쉬는 동안 일시정지하세요.');
+  const estimate = h('input',{type:'number',min:0,max:1440,step:1,value:0,'aria-label':'오늘 이미 작업한 추정 시간(분)'});
+  const start = h('button',{type:'button',class:'btn primary'},'시작 / 이어하기');
+  const pause = h('button',{type:'button',class:'btn'},'일시정지');
+  const apply = h('button',{type:'button',class:'btn'},'오늘 관찰값에 반영');
+  const saveEstimate = h('button',{type:'button',class:'btn'},'추정 시간 저장');
+  const total = h('p',{});
+  panel.append(time,h('div',{class:'actions'},start,pause,apply),message,
+    h('details',{},h('summary',{},'타이머 시작 전에 한 작업 추가'),h('p',{},'휴식을 뺀 추정 시간만 입력하세요. 타이머로 잰 구간과 중복하지 마세요.'),estimate,' 분 ',saveEstimate),total,
+    h('p',{},'같은 브라우저·계정에서 새로고침 후 이어집니다. 다른 기기와 동기화되지 않아요. 실행 중 탭을 닫아도 시간은 흐르므로 자리를 비울 때 멈춰주세요. 서울 자정에는 전날 측정을 종료합니다. 리추얼을 제외한다면 끝난 뒤 시작하세요.'));
+  $('#observationPanel').before(panel);
+  let current, storageOK=true;
+  function read() {
+    try {const raw=JSON.parse(localStorage.getItem(key)||'{}');return raw&&typeof raw==='object'?raw:{};}
+    catch {storageOK=false;message.textContent='브라우저 저장을 사용할 수 없어 타이머를 시작할 수 없습니다.';return {};}
+  }
+  function write(data) {try{localStorage.setItem(key,JSON.stringify(data));}catch{storageOK=false;throw new Error('시간을 저장하지 못했습니다. 브라우저 저장 설정을 확인하세요.');}}
+  function load() {
+    const all=read(), day=todayKst();
+    for(const [date,r] of Object.entries(all)) if(date!==day&&r.started) {
+      const end=Date.parse(date+'T00:00:00+09:00')+86400000;
+      r.ms+=Math.max(0,end-r.started);r.started=null;write(all);
+    }
+    current=all[day]||{ms:0,started:null,estimate:0};return {all,day};
+  }
+  const elapsed=()=>current.ms+(current.started?Math.max(0,Date.now()-current.started):0);
+  function render() {
+    try {load();const seconds=Math.floor(elapsed()/1000);
+      time.textContent=[Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');
+      start.disabled=!storageOK||!!current.started;pause.disabled=!storageOK||!current.started;
+      total.textContent=`${todayKst()} · 측정 ${Math.floor(seconds/60)}분 ${seconds%60}초 + 추정 ${current.estimate}분 = 관찰 반영 ${Math.floor(seconds/60)+current.estimate}분 (초는 버림)`;
+    }catch(err){message.textContent=err.message;start.disabled=true;pause.disabled=true;}
+  }
+  async function change(fn) {
+    try {
+      const auth=await api('/api/auth');if(auth.user.id!==userId){location.reload();return;}
+      const run=()=>{const {all,day}=load();fn();all[day]=current;write(all);render();};
+      if(navigator.locks) await navigator.locks.request(key,run);else run();
+    }catch(err){message.textContent=err.message;}
+  }
+  start.onclick=()=>change(()=>{if(!current.started)current.started=Date.now();message.textContent='집중 시간을 측정하고 있어요.';});
+  pause.onclick=()=>change(()=>{current.ms=elapsed();current.started=null;message.textContent='일시정지했어요. 쉬는 시간은 더해지지 않습니다.';});
+  saveEstimate.onclick=()=>change(()=>{const n=Number(estimate.value);if(!Number.isInteger(n)||n<0||n>1440)throw new Error('추정 시간은 0~1440분의 정수로 입력하세요.');current.estimate=n;message.textContent='추정 시간을 따로 저장했어요.';});
+  apply.onclick=()=>change(()=>{
+    const value=$('#observationContent input[name="value"]'),note=$('#observationContent textarea[name="note"]');
+    if(!value||!note)throw new Error('오늘 입력할 관찰 칸이 없습니다. 이미 저장했거나 규칙 변경이 필요한지 확인하세요.');
+    const unit=$('#observationContent input[name="unit"]');
+    if((unit?unit.value.trim():$('#observationContent').dataset.unit)!=='분')throw new Error('분 단위 관찰에서 사용할 수 있습니다.');
+    if(value.value&&!confirm('입력해 둔 관찰값을 오늘 집중 시간으로 바꿀까요?'))return;
+    current.ms=elapsed();current.started=null;
+    const minutes=Math.floor(current.ms/60000),line=`[집중 시간] 측정 ${minutes}분 ${Math.floor(current.ms/1000)%60}초(초 버림), 추정 ${current.estimate}분. 휴식 제외. 합계 ${minutes+current.estimate}분.`;
+    value.value=String(minutes+current.estimate);
+    note.value=note.value.split('\n').filter(x=>!x.startsWith('[집중 시간]')).concat(line).join('\n').trim();
+    message.textContent='타이머를 멈추고 입력 칸에 반영했어요. 실제로 한 일을 덧붙인 뒤 관찰 저장을 눌러주세요.';
+  });
+  render();estimate.value=current?.estimate||0;setInterval(render,1000);
+  $('#logoutBtn').addEventListener('click',()=>{try{const {all,day}=load();current.ms=elapsed();current.started=null;all[day]=current;write(all);}catch{}},true);
+}

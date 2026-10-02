@@ -412,3 +412,5 @@ button.chip:focus-visible { outline: 2px solid var(--pen); outline-offset: 1px; 
 #observationContent label { display: grid; gap: 6px; }
 #observationContent table { width: 100%; border-collapse: collapse; margin: 18px 0; }
 #observationContent th, #observationContent td { text-align: left; border-bottom: 1px solid #ddd; padding: 8px; overflow-wrap: anywhere; }
+
+.focus-clock-time { font-size: 2.4rem; font-weight: bold; font-variant-numeric: tabular-nums; }
