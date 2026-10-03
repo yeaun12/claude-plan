@@ -14,6 +14,7 @@ export default handler({
         priority: '1=높음, 2=보통, 3=낮음',
         time_zone: TIME_ZONE,
       },
+      observation_archives: await all('SELECT * FROM observation_archives WHERE user_id=? ORDER BY id', [user.id]),
       observations: await all('SELECT * FROM observations WHERE user_id=?', [user.id]),
       observation_days: await all('SELECT * FROM observation_days WHERE observation_id IN (SELECT id FROM observations WHERE user_id=?) ORDER BY date', [user.id]),
       plans: await all('SELECT * FROM plans WHERE user_id=? ORDER BY id', [user.id]),

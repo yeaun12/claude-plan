@@ -53,6 +53,7 @@ export default handler({
     const plans='SELECT id FROM plans WHERE user_id=?';
     const tasks=`SELECT id FROM tasks WHERE plan_id IN (${plans})`;
     const statements=[
+      {sql:'DELETE FROM observation_archives WHERE user_id=?',args:[u.id]},
       {sql:'DELETE FROM observation_days WHERE observation_id IN (SELECT id FROM observations WHERE user_id=?)',args:[u.id]},
       {sql:'DELETE FROM observations WHERE user_id=?',args:[u.id]},
       ...['task_tags','task_completions','runs'].map(t=>({sql:`DELETE FROM ${t} WHERE task_id IN (${tasks})`,args:[u.id]})),

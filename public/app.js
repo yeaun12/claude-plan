@@ -890,20 +890,33 @@ async function renderObservation() {
     h('label',{},'오늘 관찰값 (정수)',h('input',{name:'value',type:'number',min:0,max:100000,step:1,required:true})),
     input('note','근거 기록·오늘 실제로 한 일','',true),
   ];
+  if(data.archives?.length) {
+    const archivePanel=h('details',{},h('summary',{},`예비 관찰 보관함 (${data.archives.length}건 · 제출용 집계 제외)`));
+    for(const archive of data.archives) {
+      const snap=JSON.parse(archive.snapshot_json),old=snap.observation;
+      const item=h('details',{},h('summary',{},`${fmtInstant(archive.archived_at)} KST · ${archive.reason}`),h('p',{},'기존 설정: '+old.config_json));
+      for(const day of snap.days) item.append(h('p',{},`${day.date} · ${day.value} · ${day.note}`),h('p',{},'정정 이력: '+(day.corrections_json||'[]')));
+      if(old.change_json) item.append(h('p',{},`기존 규칙 변경 (${fmtInstant(old.changed_at)} KST): ${old.change_json}`));
+      archivePanel.append(item);
+    }
+    box.append(archivePanel);
+  }
   if(!data.observation) {
     const form=h('form',{},
-      input('question','관찰 질문','하루 첫 작업을 미리 정하면 실제 집중 시간이 늘어날까?'),
+      input('question','관찰 질문','작업 전환을 줄이는 계획 규칙을 개선하면 하루 실제 집중 시간이 늘어날까?'),
       input('metric','지표 한 개','하루 실제 집중 시간 합계'),
       input('unit','단위','분'),
-      input('calculation','같게 유지할 계산 규칙','서울 날짜별 실제 집중 시간(분)을 합산한다. 휴식은 제외한다.',true),
-      input('plan_rule','변경 전 계획 규칙','하루 할 일을 시작할 때 정한다.'),
+      input('calculation','같게 유지할 계산 규칙','서울 날짜별 프로젝트·과제 집중 시간을 스톱워치로 누적한다. 아침 리추얼·휴식은 제외하고 하루 총 초를 합산한 뒤 60으로 나누어 소수 부분을 버린다. 측정 누락 구간은 추정으로 채우지 않고 별도로 표시한다.',true),
+      input('plan_rule','변경 전 계획 규칙','50분 작업·10분 휴식을 유지한다. 각 작업 구간 시작 전에 할 일 한 가지와 완료 기준을 정하고, 다른 할 일은 메모한 뒤 휴식 시간에 검토한다.',true),
       input('missing','누락 처리','기록이 없는 날은 제외하고 실제 기록일 5일을 채운다. 0으로 대체하지 않는다.'),
-      input('duplicate','중복 처리','같은 실행 기록 ID는 한 번만 합산한다. 하루 관찰은 한 번 저장한다.'),
+      input('duplicate','중복 처리','동일한 시간 구간은 한 번만 합산한다. 하루 관찰은 한 번 저장한다.'),
       input('outlier','이상치 처리','큰 값도 원기록을 확인하고 실제 값이면 그대로 포함한다.'),
-      input('rounding','반올림','원기록은 정수 분. 합계는 반올림하지 않고 평균은 소수 둘째 자리까지 반올림한다.'),
-      input('week_start','주 시작 요일','월요일'),...dailyFields(),
-      h('button',{type:'submit',class:'btn primary'},'규칙 확정 및 실제 1일차 기록 저장'));
-    submitForm(form,'start');return;
+      input('rounding','반올림','하루 누적 초를 분으로 바꿀 때 소수 부분을 버린다. 일별 정수 분을 합산하고 평균만 소수 둘째 자리까지 반올림한다.'),
+      input('week_start','주 시작 요일','월요일'),
+      h('label',{},'관찰 시작 예정일',h('input',{name:'starts_on',type:'date',required:true,min:data.today,value:new Date(Date.parse(data.today+'T00:00:00Z')+86400000).toISOString().slice(0,10)})),
+      h('p',{},'기준만 먼저 확정합니다. 실제 1일차 값은 시작일의 작업을 마친 뒤 저장하세요. 실제 이틀을 기록한 뒤 개선할 계획 규칙 하나를 결정합니다.'),
+      h('button',{type:'submit',class:'btn primary'},'제출용 관찰 기준 확정'));
+    submitForm(form,'prepare');return;
   }
   const o=data.observation;
   box.append(h('h3',{},o.config.question));
@@ -927,8 +940,18 @@ async function renderObservation() {
     row.append(form);corrections.append(row);
   }
   box.append(corrections);
+  const archiveForm=h('form',{},input('reason','예비 관찰로 보관하는 이유','테스트 기록이 포함되어 제출용 관찰을 새로 시작한다. 기존 값·근거·규칙 변경·정정 이력을 보존한다.',true),h('button',{type:'submit',class:'btn'},'기존 관찰을 예비로 보관'));
+  archiveForm.addEventListener('submit',async e=>{
+    e.preventDefault();if(!confirm('현재 관찰 전체를 예비 보관함으로 옮기고 제출용 집계에서 제외할까요? 원래 기록과 이력은 보존됩니다.'))return;
+    const button=archiveForm.querySelector('button');button.disabled=true;
+    try {await api('/api/observation?action=archive',{method:'POST',body:{observation_id:o.id,reason:new FormData(archiveForm).get('reason')}});await renderObservation();toast('예비 관찰로 보관했습니다. 새 관찰 기준을 확정해 주세요.');}
+    catch(err){fail(err);button.disabled=false;}
+  });
+  box.append(h('details',{},h('summary',{},'예비 관찰로 분리하고 새로 시작'),archiveForm));
   if(o.change) box.append(h('p',{},`규칙 변경: ${o.change.plan_rule}`),h('p',{},`이유: ${o.change.reason} · ${fmtInstant(o.changed_at)} KST · 참조 기록 #${o.change.reference_day_ids.join(', #')}`));
-  if(data.days.length===2 && !o.change) {
+  if(o.config.starts_on && data.today<o.config.starts_on) {
+    box.append(h('p',{},`${o.config.starts_on}부터 실제 관찰을 기록합니다. 현재 0/5일입니다.`));
+  } else if(data.days.length===2 && !o.change) {
     submitForm(h('form',{},h('h3',{},'3일차 전, 계획 규칙 하나 바꾸기'),input('plan_rule','새 계획 규칙'),input('reason','1~2일차를 근거로 한 변경 이유','',true),h('button',{type:'submit',class:'btn'},'규칙 변경 기록 저장')),'change');
   } else if(data.days.length<5 && !data.days.some(d=>d.date===data.today)) {
     submitForm(h('form',{},h('h3',{},`${data.days.length+1}일차 · ${data.today}`),...dailyFields(),h('button',{type:'submit',class:'btn'},'오늘 실제 관찰 저장')),'day');

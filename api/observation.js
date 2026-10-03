@@ -9,6 +9,7 @@ export default handler({
     const o=await one('SELECT * FROM observations WHERE user_id=?',[user.id]);
     const days=o ? await all('SELECT * FROM observation_days WHERE observation_id=? ORDER BY date',[o.id]):[];
     send(res,200,{observation:o ? {...o,config:JSON.parse(o.config_json),change:o.change_json?JSON.parse(o.change_json):null}:null,
+      archives:await all('SELECT * FROM observation_archives WHERE user_id=? ORDER BY id DESC',[user.id]),
       days,today:todayKst(),total:summary(days),before:summary(days.slice(0,2)),after:summary(days.slice(2))});
   },
   async POST({res,user,q,body}) {
@@ -17,19 +18,29 @@ export default handler({
       const existing=await tx.execute({sql:'SELECT * FROM observations WHERE user_id=?',args:[user.id]});
       const o=existing.rows[0];
       const now=nowIso(), date=todayKst();
-      if(q.action==='start') {
+      if(q.action==='start' || q.action==='prepare') {
         if(o) throw new HttpError(409,'이미 관찰을 시작했습니다. 질문과 계산 규칙은 고정됩니다.');
         const config={};
         for(const k of ['question','metric','unit','calculation','plan_rule','missing','duplicate','outlier','rounding','week_start']) config[k]=v.text(body[k],k,{max:500});
-        const value=v.minutes(body.value,'오늘 관찰값');
-        const note=v.text(body.note,'오늘 기록 근거',{max:1000});
+        if(q.action==='prepare') {
+          config.starts_on=v.date(body.starts_on,'관찰 시작 예정일');
+          if(config.starts_on<date) throw new HttpError(400,'시작 예정일은 오늘 이후여야 합니다.');
+        }
+        const value=q.action==='start'?v.minutes(body.value,'오늘 관찰값'):null;
+        const note=q.action==='start'?v.text(body.note,'오늘 기록 근거',{max:1000}):null;
         const r=await tx.execute({sql:'INSERT INTO observations(user_id,config_json,created_at) VALUES(?,?,?)',args:[user.id,JSON.stringify(config),now]});
-        await tx.execute({sql:'INSERT INTO observation_days(observation_id,date,value,note,created_at) VALUES(?,?,?,?,?)',args:[Number(r.lastInsertRowid),date,value,note,now]});
+        if(q.action==='start') await tx.execute({sql:'INSERT INTO observation_days(observation_id,date,value,note,created_at) VALUES(?,?,?,?,?)',args:[Number(r.lastInsertRowid),date,value,note,now]});
       } else {
         if(!o) throw new HttpError(400,'먼저 1일차 관찰을 시작해 주세요.');
         const r=await tx.execute({sql:'SELECT * FROM observation_days WHERE observation_id=? ORDER BY date',args:[o.id]});
         const days=r.rows;
-        if(q.action==='correct') {
+        if(q.action==='archive') {
+          if(v.id(body.observation_id)!==Number(o.id)) throw new HttpError(409,'관찰이 변경됐습니다. 새로고침 후 확인하세요.');
+          const reason=v.text(body.reason,'예비 관찰 보관 사유',{max:500});
+          await tx.execute({sql:'INSERT INTO observation_archives(user_id,archived_at,reason,snapshot_json) VALUES(?,?,?,?)',args:[user.id,now,reason,JSON.stringify({observation:o,days})]});
+          await tx.execute({sql:'DELETE FROM observation_days WHERE observation_id=?',args:[o.id]});
+          await tx.execute({sql:'DELETE FROM observations WHERE id=? AND user_id=?',args:[o.id,user.id]});
+        } else if(q.action==='correct') {
           const day=days.find(d=>Number(d.id)===v.id(body.day_id));
           if(!day) throw new HttpError(404,'관찰 기록을 찾을 수 없습니다.');
           if(Number(day.value)!==Number(body.expected_value) || day.note!==body.expected_note) throw new HttpError(409,'기록이 변경됐습니다. 새로고침 후 다시 확인하세요.');
@@ -47,6 +58,8 @@ export default handler({
           const change={plan_rule:rule,reason:v.text(body.reason,'변경 이유',{max:500}),reference_day_ids:days.map(d=>d.id)};
           await tx.execute({sql:'UPDATE observations SET change_json=?,changed_at=? WHERE id=?',args:[JSON.stringify(change),now,o.id]});
         } else if(q.action==='day') {
+          const config=JSON.parse(o.config_json);
+          if(config.starts_on && date<config.starts_on) throw new HttpError(409,'아직 관찰 시작 예정일 전입니다.');
           if(days.length>=5) throw new HttpError(409,'5일 관찰을 완료했습니다.');
           if(days.some(d=>d.date===date)) throw new HttpError(409,'오늘 기록은 이미 저장됐습니다. 하루 한 번 기록합니다.');
           if(days.length===2 && !o.changed_at) throw new HttpError(409,'3일차 전에 계획 규칙 하나를 변경하고 이유를 남겨 주세요.');

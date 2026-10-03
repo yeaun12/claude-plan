@@ -5,8 +5,8 @@ const base=process.argv[2]||'http://localhost:3107';
 if(!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(base))throw Error('local only');
 const db=createClient({url:process.env.TURSO_DATABASE_URL});
 async function req(path,method='GET',body,cookie='') {const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json','X-PDS-Request':'1',Cookie:cookie},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
-const cookies=[];
-for(let i=0;i<2;i++){const creds={username:'corr_'+randomBytes(5).toString('hex'),password:randomBytes(24).toString('hex')};await req('/api/auth?action=signup','POST',creds);cookies.push((await req('/api/auth?action=login','POST',creds)).cookie);}
+const cookies=[],accounts=[];
+for(let i=0;i<2;i++){const creds={username:'corr_'+randomBytes(5).toString('hex'),password:randomBytes(24).toString('hex')};accounts.push(creds);await req('/api/auth?action=signup','POST',creds);cookies.push((await req('/api/auth?action=login','POST',creds)).cookie);}
 const config=Object.fromEntries(['question','metric','unit','calculation','plan_rule','missing','duplicate','outlier','rounding','week_start'].map(k=>[k,'test']));
 for(const cookie of cookies)assert.equal((await req('/api/observation?action=start','POST',{...config,value:10,note:'save test'},cookie)).status,201);
 const original=(await req('/api/observation','GET',null,cookies[0])).data;const day=original.days[0];
@@ -21,4 +21,19 @@ const after=(await req('/api/observation','GET',null,cookies[0])).data;
 assert.equal(after.total.sum,120);assert.equal(after.days.length,1);assert.equal(after.days[0].created_at,day.created_at);assert.equal(after.days[0].date,day.date);assert.equal(after.observation.change_json,before.observation.change_json);assert.equal(after.observation.changed_at,before.observation.changed_at);
 const history=JSON.parse(after.days[0].corrections_json);assert.equal(history[0].before.value,10);assert.equal(history[0].before.note,'save test');assert.equal(history[0].after.value,120);assert(history[0].corrected_at);
 const exported=(await req('/api/export','GET',null,cookies[0])).data;assert.equal(exported.observation_days[0].corrections_json,after.days[0].corrections_json);
+assert.equal((await req('/api/observation?action=archive','POST',{observation_id:original.observation.id,reason:'preliminary test'},cookies[1])).status,409);
+assert.equal((await req('/api/observation?action=archive','POST',{observation_id:original.observation.id,reason:'preliminary test'},cookies[0])).status,201);
+const archived=(await req('/api/observation','GET',null,cookies[0])).data;
+assert.equal(archived.observation,null);assert.equal(archived.total.count,0);assert.equal(archived.archives.length,1);
+const snap=JSON.parse(archived.archives[0].snapshot_json);assert.deepEqual(snap.days,after.days);assert.equal(snap.observation.changed_at,before.observation.changed_at);
+assert.equal((await req('/api/observation','GET',null,cookies[1])).data.archives.length,0);
+const nextDay=new Date(Date.parse(archived.today+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+assert.equal((await req('/api/observation?action=prepare','POST',{...config,starts_on:nextDay},cookies[0])).status,201);
+const fresh=(await req('/api/observation','GET',null,cookies[0])).data;assert.equal(fresh.total.count,0);assert.equal(fresh.observation.change,null);assert.equal(fresh.archives.length,1);
+assert.equal((await req('/api/observation?action=day','POST',{value:20,note:'too early'},cookies[0])).status,409);
+const backup=(await req('/api/export','GET',null,cookies[0])).data;assert.equal(backup.observation_archives[0].snapshot_json,archived.archives[0].snapshot_json);
+assert.equal((await req('/api/auth?action=delete','DELETE',{password:accounts[0].password},cookies[0])).status,200);
+assert.equal(Number((await db.execute('SELECT COUNT(*) AS n FROM observation_archives')).rows[0].n),0);
+console.log('PASS account deletion removes preliminary archive');
+console.log('PASS preliminary archive, owner isolation, full snapshot, fresh study preparation, start-date gate, export');
 console.log('PASS correction ownership, anonymous denial, stale update rejection, audit export, timestamps and references preserved, updated totals');db.close();
