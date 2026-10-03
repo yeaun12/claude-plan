@@ -913,6 +913,20 @@ async function renderObservation() {
   box.append(detail);
   const table=h('table',{},h('thead',{},h('tr',{},...['날짜 (서울)','값 · '+o.config.unit,'근거'].map(x=>h('th',{},x)))),h('tbody',{},...data.days.map(d=>h('tr',{},h('td',{},d.date),h('td',{},d.value),h('td',{},d.note)))));
   box.append(table,h('p',{},`총 ${data.total.count}/5일 · 합계 ${data.total.sum} ${o.config.unit} · 평균 ${data.total.mean ?? '—'} ${o.config.unit}`),h('p',{},`변경 전(1~2일): 합계 ${data.before.sum}, 평균 ${data.before.mean ?? '—'} / 변경 후(3~5일): 합계 ${data.after.sum}, 평균 ${data.after.mean ?? '—'} (${o.config.unit})`));
+  const corrections=h('details',{},h('summary',{},'저장 기록 정정 · 이력 보기'),h('p',{},'입력 오류를 정정할 때만 사용하세요. 원래 값과 근거, 정정 사유·시각은 보존됩니다. 날짜와 규칙 변경 시각은 바뀌지 않습니다.'));
+  for(const day of data.days) {
+    const history=JSON.parse(day.corrections_json||'[]');
+    const row=h('details',{},h('summary',{},day.date+' 기록 정정'));
+    for(const item of history) row.append(h('p',{},`${fmtInstant(item.corrected_at)} KST · ${item.before.value} → ${item.after.value} · ${item.reason}`),h('p',{},'이전 근거: '+item.before.note),h('p',{},'정정 근거: '+item.after.note));
+    const form=h('form',{},input('corrected_value','정정할 값',day.value),input('corrected_note','정정한 기록 근거',day.note,true),input('reason','정정 사유','',true),h('button',{type:'submit',class:'btn'},'이력을 남기고 정정 저장'));
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();const button=form.querySelector('button');button.disabled=true;
+      try {await api('/api/observation?action=correct',{method:'POST',body:{...Object.fromEntries(new FormData(form)),day_id:day.id,expected_value:day.value,expected_note:day.note}});await renderObservation();toast('정정 이력을 보존하고 저장했습니다.');}
+      catch(err){fail(err);button.disabled=false;}
+    });
+    row.append(form);corrections.append(row);
+  }
+  box.append(corrections);
   if(o.change) box.append(h('p',{},`규칙 변경: ${o.change.plan_rule}`),h('p',{},`이유: ${o.change.reason} · ${fmtInstant(o.changed_at)} KST · 참조 기록 #${o.change.reference_day_ids.join(', #')}`));
   if(data.days.length===2 && !o.change) {
     submitForm(h('form',{},h('h3',{},'3일차 전, 계획 규칙 하나 바꾸기'),input('plan_rule','새 계획 규칙'),input('reason','1~2일차를 근거로 한 변경 이유','',true),h('button',{type:'submit',class:'btn'},'규칙 변경 기록 저장')),'change');

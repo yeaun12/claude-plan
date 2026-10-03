@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
+import {createClient} from '@libsql/client';
+const base=process.argv[2]||'http://localhost:3107';
+if(!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(base))throw Error('local only');
+const db=createClient({url:process.env.TURSO_DATABASE_URL});
+async function req(path,method='GET',body,cookie='') {const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json','X-PDS-Request':'1',Cookie:cookie},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
+const cookies=[];
+for(let i=0;i<2;i++){const creds={username:'corr_'+randomBytes(5).toString('hex'),password:randomBytes(24).toString('hex')};await req('/api/auth?action=signup','POST',creds);cookies.push((await req('/api/auth?action=login','POST',creds)).cookie);}
+const config=Object.fromEntries(['question','metric','unit','calculation','plan_rule','missing','duplicate','outlier','rounding','week_start'].map(k=>[k,'test']));
+for(const cookie of cookies)assert.equal((await req('/api/observation?action=start','POST',{...config,value:10,note:'save test'},cookie)).status,201);
+const original=(await req('/api/observation','GET',null,cookies[0])).data;const day=original.days[0];
+await db.execute({sql:"UPDATE observations SET changed_at=?, change_json=? WHERE id=?",args:['2026-10-02T12:06:29.225Z',JSON.stringify({plan_rule:'changed',reference_day_ids:[day.id]}),original.observation.id]});
+const before=(await req('/api/observation','GET',null,cookies[0])).data;
+const body={day_id:day.id,expected_value:10,expected_note:'save test',corrected_value:120,corrected_note:'회상 기반 약 120분. 리추얼·휴식 제외.',reason:'저장 테스트 값을 실제 회상값으로 정정'};
+assert.equal((await req('/api/observation?action=correct','POST',body,cookies[1])).status,404);
+assert.equal((await req('/api/observation?action=correct','POST',body)).status,401);
+assert.equal((await req('/api/observation?action=correct','POST',body,cookies[0])).status,201);
+assert.equal((await req('/api/observation?action=correct','POST',body,cookies[0])).status,409);
+const after=(await req('/api/observation','GET',null,cookies[0])).data;
+assert.equal(after.total.sum,120);assert.equal(after.days.length,1);assert.equal(after.days[0].created_at,day.created_at);assert.equal(after.days[0].date,day.date);assert.equal(after.observation.change_json,before.observation.change_json);assert.equal(after.observation.changed_at,before.observation.changed_at);
+const history=JSON.parse(after.days[0].corrections_json);assert.equal(history[0].before.value,10);assert.equal(history[0].before.note,'save test');assert.equal(history[0].after.value,120);assert(history[0].corrected_at);
+const exported=(await req('/api/export','GET',null,cookies[0])).data;assert.equal(exported.observation_days[0].corrections_json,after.days[0].corrections_json);
+console.log('PASS correction ownership, anonymous denial, stale update rejection, audit export, timestamps and references preserved, updated totals');db.close();

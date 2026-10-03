@@ -29,7 +29,18 @@ export default handler({
         if(!o) throw new HttpError(400,'먼저 1일차 관찰을 시작해 주세요.');
         const r=await tx.execute({sql:'SELECT * FROM observation_days WHERE observation_id=? ORDER BY date',args:[o.id]});
         const days=r.rows;
-        if(q.action==='change') {
+        if(q.action==='correct') {
+          const day=days.find(d=>Number(d.id)===v.id(body.day_id));
+          if(!day) throw new HttpError(404,'관찰 기록을 찾을 수 없습니다.');
+          if(Number(day.value)!==Number(body.expected_value) || day.note!==body.expected_note) throw new HttpError(409,'기록이 변경됐습니다. 새로고침 후 다시 확인하세요.');
+          const value=v.minutes(body.corrected_value,'정정 값');
+          const note=v.text(body.corrected_note,'정정 근거',{max:1000});
+          const reason=v.text(body.reason,'정정 사유',{max:500});
+          if(value===Number(day.value)&&note===day.note) throw new HttpError(400,'값 또는 근거를 변경해 주세요.');
+          const history=JSON.parse(day.corrections_json||'[]');
+          history.push({corrected_at:now,reason,before:{value:Number(day.value),note:day.note},after:{value,note}});
+          await tx.execute({sql:'UPDATE observation_days SET value=?,note=?,corrections_json=? WHERE id=? AND observation_id=?',args:[value,note,JSON.stringify(history),day.id,o.id]});
+        } else if(q.action==='change') {
           if(days.length!==2 || o.changed_at) throw new HttpError(409,'계획 규칙은 2일차 기록 뒤, 3일차 기록 전에 한 번만 바꿀 수 있습니다.');
           const rule=v.text(body.plan_rule,'새 계획 규칙',{max:500});
           if(rule===JSON.parse(o.config_json).plan_rule) throw new HttpError(400,'변경 전과 다른 계획 규칙을 입력해 주세요.');
