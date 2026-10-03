@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
+import {createClient} from '@libsql/client';
+const base=process.argv[2];
+if(!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(base))throw Error('local only');
+const sql=createClient({url:process.env.TURSO_DATABASE_URL});
+async function req(path,method='GET',body,cookie='') {
+ const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json','X-PDS-Request':'1',Cookie:cookie},body:body===undefined?undefined:JSON.stringify(body)});
+ return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};
+}
+const cookies=[];
+for(let i=0;i<2;i++) {const creds={username:'trash_'+randomBytes(5).toString('hex'),password:randomBytes(24).toString('hex')};assert.equal((await req('/api/auth?action=signup','POST',creds)).status,201);cookies.push((await req('/api/auth?action=login','POST',creds)).cookie);}
+const [a,b]=cookies;
+const fields={title:'deletion test',start_date:'2026-10-03',end_date:'2026-10-05',priority:2,success_criteria:'restore all',estimated_minutes:40};
+const p=(await req('/api/plans','POST',fields,a)).data;
+const task=(await req('/api/tasks','POST',{plan_id:p.id,title:'task',priority:2,estimated_minutes:40},a)).data;
+assert(task.id);
+const run=(await req('/api/runs','POST',{task_id:task.id,started_at:'2026-10-03T01:00:00Z',ended_at:'2026-10-03T01:40:00Z',note:'preserve'},a)).data;assert(run.id);
+const review=(await req('/api/reviews','POST',{plan_id:p.id,lesson:'preserve review'},a)).data;assert(review.id);
+const obsBefore=(await req('/api/observation','GET',undefined,a)).data;
+for(const cookie of [b,'']) assert.equal((await req('/api/plans?id='+p.id,'DELETE',undefined,cookie)).status,cookie?404:401);
+assert.equal((await req('/api/plans?id='+p.id,'DELETE',undefined,a)).status,200);
+assert.equal((await req('/api/plans','GET',undefined,a)).data.plans.length,0);
+assert.equal((await req('/api/plans?trash=1','GET',undefined,a)).data.plans.length,1);
+assert.equal((await req('/api/plans?trash=1','GET',undefined,b)).data.plans.length,0);
+for(const path of ['/api/plans?id='+p.id,'/api/tasks?id='+task.id,'/api/runs?id='+run.id,'/api/reviews?id='+review.id,'/api/stats?plan_id='+p.id]) assert.equal((await req(path,'GET',undefined,a)).status,404,path);
+for(const [path,key] of [['/api/tasks','tasks'],['/api/runs','runs'],['/api/reviews','reviews']])assert.equal((await req(path,'GET',undefined,a)).data[key].length,0,path);
+assert.equal((await req('/api/tasks?id='+task.id,'PATCH',{title:'blocked'},a)).status,404);
+assert.equal((await req('/api/runs','POST',{task_id:task.id},a)).status,404);
+assert.equal((await req('/api/plans?id='+p.id,'PATCH',{title:'blocked'},a)).status,404);
+assert.deepEqual((await req('/api/observation','GET',undefined,a)).data,obsBefore);
+const backup=(await req('/api/export','GET',undefined,a)).data;
+assert(backup.plans[0].deleted_at);assert.equal(backup.runs[0].id,run.id);assert.equal(backup.reviews[0].id,review.id);
+for(const cookie of [b,''])assert.equal((await req('/api/plans?id='+p.id+'&action=restore','PATCH',{},cookie)).status,cookie?404:401);
+assert.equal((await req('/api/plans?id='+p.id+'&action=restore','PATCH',{},a)).status,200);
+assert.equal((await req('/api/plans?trash=1','GET',undefined,a)).data.plans.length,0);
+assert.equal((await req('/api/plans','GET',undefined,a)).data.plans[0].id,p.id);
+assert.equal((await req('/api/runs','GET',undefined,a)).data.runs[0].actual_minutes,40);
+assert.equal((await req('/api/reviews','GET',undefined,a)).data.reviews[0].id,review.id);
+assert.equal((await req('/api/plans?id='+p.id,'GET',undefined,a)).data.versions.length,1);
+console.log('PASS plan trash: owner isolation, auth, hidden child reads/writes, export preservation, observation unchanged, complete restore and empty-list transition');
+sql.close();

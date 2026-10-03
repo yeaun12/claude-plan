@@ -3,7 +3,7 @@ import { handler, send, db, one, all, v, nowIso, HttpError } from '../lib/db.js'
 
 export default handler({
   async GET({ res, q, user }) {
-    const where = ['t.deleted_at IS NULL', 't.plan_id IN (SELECT id FROM plans WHERE user_id = ?)'];
+    const where = ['t.deleted_at IS NULL', 't.plan_id IN (SELECT id FROM plans WHERE user_id = ? AND deleted_at IS NULL)'];
     const args = [user.id];
     if (q.task_id) { where.push('r.task_id = ?'); args.push(v.id(q.task_id, 'task_id')); }
     if (q.plan_id) { where.push('t.plan_id = ?'); args.push(v.id(q.plan_id, 'plan_id')); }

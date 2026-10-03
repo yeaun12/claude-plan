@@ -159,6 +159,37 @@ async function loadPlans() {
   sel.value = state.planId || '';
 }
 
+async function loadPlanTrash() {
+  const box = $('#planTrashList');
+  box.replaceChildren(h('p', {}, '불러오는 중…'));
+  const { plans } = await api('/api/plans?trash=1');
+  box.replaceChildren(...(plans.length ? plans.map(p => h('div', { class: 'actions' },
+    h('span', {}, `#${p.id} ${p.title} · ${fmtInstant(p.deleted_at)} 삭제`),
+    h('button', { type: 'button', class: 'btn small', text: '복구', onclick: async e => {
+      e.target.disabled = true;
+      try {
+        await api(`/api/plans?id=${p.id}&action=restore`, { method: 'PATCH', body: {} });
+        await loadPlans(); await selectPlan(p.id, 'plan'); await loadPlanTrash();
+        toast('계획과 연결 기록을 복구했습니다.');
+      } catch (err) { e.target.disabled = false; fail(err); }
+    }}))) : [h('p', {}, '삭제한 계획이 없습니다.')]));
+}
+
+async function deletePlan() {
+  const plan = state.plan;
+  if (!plan || plan.id !== state.planId) return;
+  if (!confirm(`“${plan.title}” 계획을 삭제할까요? 연결된 할 일·실행·회고 기록도 목록과 집계에서 숨겨집니다. ‘삭제한 계획’에서 복구할 수 있습니다. 5일 관찰 기록은 유지됩니다.`)) return;
+  const button = $('#deletePlanBtn'); button.disabled = true;
+  try {
+    await api(`/api/plans?id=${plan.id}`, { method: 'DELETE' });
+    state.plan = null;
+    await loadPlans(); await selectPlan(state.planId, 'plan');
+    if ($('#planTrash').open) await loadPlanTrash();
+    toast('계획을 삭제했습니다. 삭제한 계획에서 복구할 수 있습니다.');
+  } catch (err) { fail(err); }
+  finally { button.disabled = false; }
+}
+
 async function renderPlan() {
   const form = $('#planForm');
   $('#planEmpty').hidden = state.plans.length > 0;
@@ -771,6 +802,8 @@ function bind() {
   $('#newPlanBtn').addEventListener('click', () => setView('plan').then(() => openPlanForm()).catch(fail));
   $('#planForm').addEventListener('submit', submitPlan);
   $('#planCancel').addEventListener('click', closePlanForm);
+  $('#deletePlanBtn').addEventListener('click', deletePlan);
+  $('#planTrash').addEventListener('toggle', () => { if ($('#planTrash').open) loadPlanTrash().catch(fail); });
   $('#editPlanBtn').addEventListener('click', () => openPlanForm({ mode: 'edit' }));
   $('#taskForm').addEventListener('submit', submitTask);
   $('#fQ').addEventListener('input', (e) => {

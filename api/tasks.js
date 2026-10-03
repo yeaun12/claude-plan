@@ -63,7 +63,7 @@ function readTaskFields(body, { partial = false } = {}) {
 
 export default handler({
   async GET({ res, q, user }) {
-    const where = ['t.deleted_at IS NULL', 't.plan_id IN (SELECT id FROM plans WHERE user_id = ?)'];
+    const where = ['t.deleted_at IS NULL', 't.plan_id IN (SELECT id FROM plans WHERE user_id = ? AND deleted_at IS NULL)'];
     const args = [user.id];
     if (q.plan_id) { where.push('t.plan_id = ?'); args.push(v.id(q.plan_id, 'plan_id')); }
     if (q.id) {

@@ -5,7 +5,7 @@ import { computeStats } from '../lib/stats.js';
 export default handler({
   async GET({ res, q, user }) {
     const args = [user.id];
-    let where = 'WHERE p.user_id = ?';
+    let where = 'WHERE p.user_id = ? AND p.deleted_at IS NULL';
     if (q.plan_id) { where += ' AND r.plan_id = ?'; args.push(v.id(q.plan_id, 'plan_id')); }
     const reviews = await all(
       `SELECT r.*, p.title AS plan_title, n.id AS next_plan_id, n.title AS next_plan_title

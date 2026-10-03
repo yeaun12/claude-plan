@@ -51,6 +51,10 @@
         <select id="planSelect"><option value="">계획 없음</option></select>
         <button type="button" class="btn ghost" id="newPlanBtn">+ 새 계획</button>
       </div>
+      <details id="planTrash"><summary>삭제한 계획</summary>
+        <p class="muted small">삭제한 계획과 연결 기록을 복구할 수 있습니다. 5일 관찰 기록은 계획 삭제와 별도로 유지됩니다.</p>
+        <div id="planTrashList"></div>
+      </details>
     </header>
 
     <nav class="tabs" role="tablist" aria-label="단계">
@@ -106,7 +110,7 @@
             <div><dt>지금 판</dt><dd id="pdVersion"></dd></div>
             <div class="wide"><dt>성공 기준</dt><dd id="pdCriteria"></dd></div>
           </dl>
-          <div class="actions"><button type="button" class="btn" id="editPlanBtn">계획 고치기</button></div>
+          <div class="actions"><button type="button" class="btn" id="editPlanBtn">계획 고치기</button><button type="button" class="btn danger" id="deletePlanBtn">계획 삭제</button></div>
 
           <h3 class="section-title">고친 이력 <small>처음 세운 계획은 1판으로 그대로 남습니다</small></h3>
           <ol class="versions" id="pdVersions"></ol>

@@ -27,7 +27,7 @@ export default handler({
     const plans = await all(
       `SELECT p.*,
         (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = p.id AND t.deleted_at IS NULL) AS task_count
-       FROM plans p WHERE p.user_id = ? ORDER BY p.start_date DESC, p.id DESC`, [user.id]
+       FROM plans p WHERE p.user_id = ? AND p.deleted_at IS ${q.trash === '1' ? 'NOT NULL' : 'NULL'} ORDER BY p.start_date DESC, p.id DESC`, [user.id]
     );
     send(res, 200, { plans });
   },
@@ -69,8 +69,12 @@ export default handler({
   },
 
   // 고치기: 계획 ID는 그대로, 내용만 바뀐다. 바뀌기 전 판은 plan_versions 에 남아 있다.
-  async PATCH({ res, q, body }) {
+  async PATCH({ res, q, body, user }) {
     const id = v.id(q.id);
+    if (q.action === 'restore') {
+      await db().execute({sql:'UPDATE plans SET deleted_at=NULL, updated_at=? WHERE id=? AND user_id=?',args:[nowIso(),id,user.id]});
+      return send(res,200,await getPlan(id));
+    }
     const current = await one('SELECT * FROM plans WHERE id = ?', [id]);
     if (!current) throw new HttpError(404, '그 계획을 찾을 수 없습니다.');
     const f = readPlanFields({ ...current, ...body });
@@ -92,5 +96,10 @@ export default handler({
       },
     ], 'write');
     send(res, 200, await getPlan(id));
+  },
+  async DELETE({ res, q, user }) {
+    const id = v.id(q.id), now = nowIso();
+    await db().execute({sql:'UPDATE plans SET deleted_at=?, updated_at=? WHERE id=? AND user_id=? AND deleted_at IS NULL',args:[now,now,id,user.id]});
+    send(res,200,{deleted:id,recoverable:true});
   },
 }, { resource: 'plans' });
