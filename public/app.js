@@ -1056,3 +1056,13 @@ function mountFocusClock(userId) {
   render();estimate.value=current?.estimate||0;setInterval(render,1000);
   $('#logoutBtn').addEventListener('click',()=>{try{const {all,day}=load();current.ms=elapsed();current.started=null;all[day]=current;write(all);}catch{}},true);
 }
+
+// 기존 T06 원본을 현재 소유 계정으로 한 번만 병합한다.
+const t06ImportButton=h('button',{type:'button',class:'btn',text:'T06 기존 자료 가져오기'});
+$('#exportBtn').after(t06ImportButton);
+t06ImportButton.addEventListener('click',async()=>{
+ if(!confirm('T06의 계획·할 일·실행·회고를 aleph02 계정으로 가져올까요? 현재 기록과 5일 관찰은 유지하며, 같은 자료를 다시 추가하지 않습니다.'))return;
+ t06ImportButton.disabled=true;
+ try{const result=await api('/api/export',{method:'POST',body:{action:'import-t06'}});toast(result.already_imported?'이미 가져온 자료입니다.':`T06 계획 ${result.counts.plans}개를 가져왔습니다. 기존 기록과 5일 관찰은 유지됩니다.`);await loadPlans();}
+ catch(e){fail(e);}finally{t06ImportButton.disabled=false;}
+});
