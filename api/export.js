@@ -1,7 +1,16 @@
+import { importT06 } from '../lib/import-t06.js';
 // 내 자료 전체를 JSON 파일 하나로 내려받는다.
-import { handler, send, all, nowIso, todayKst, SCHEMA_VERSION, TIME_ZONE } from '../lib/db.js';
+import { handler, send, all, nowIso, todayKst, SCHEMA_VERSION, TIME_ZONE, HttpError } from '../lib/db.js';
 
 export default handler({
+  async POST({res,user,body}) {
+    if(user.username!=='aleph02'||body.action!=='import-t06') throw new HttpError(403,'이전 대상 계정이 아닙니다.');
+    const response=await fetch('https://claude-plan.vercel.app/api/export',{signal:AbortSignal.timeout(20000),redirect:'error'});
+    if(!response.ok) throw new HttpError(502,'T06 자료를 가져오지 못했습니다.');
+    const raw=await response.text();
+    if(raw.length>2000000) throw new HttpError(400,'이전 자료가 너무 큽니다.');
+    send(res,200,await importT06(JSON.parse(raw),user));
+  },
   async GET({ res, user }) {
     const data = {
       schema: SCHEMA_VERSION,
