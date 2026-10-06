@@ -1056,35 +1056,3 @@ function mountFocusClock(userId) {
   render();estimate.value=current?.estimate||0;setInterval(render,1000);
   $('#logoutBtn').addEventListener('click',()=>{try{const {all,day}=load();current.ms=elapsed();current.started=null;all[day]=current;write(all);}catch{}},true);
 }
-
-// 기존 T06 원본을 현재 소유 계정으로 한 번만 병합한다.
-const t06ImportButton=h('button',{type:'button',class:'btn',text:'T06 기존 자료 가져오기','aria-expanded':'false'});
-const t06ImportStatus=h('p',{role:'status','aria-live':'polite'});
-const t06ImportConfirm=h('button',{type:'button',class:'btn',text:'확인하고 가져오기'});
-const t06ImportCancel=h('button',{type:'button',class:'btn',text:'취소'});
-const t06ImportPanel=h('div',{class:'card'},
- h('p',{text:'T06의 계획·할 일·실행·회고를 aleph02 계정으로 가져옵니다. 현재 기록과 5일 관찰은 유지하며, 같은 자료를 다시 추가하지 않습니다.'}),
- t06ImportConfirm,t06ImportCancel,t06ImportStatus);
-t06ImportPanel.hidden=true;
-$('#exportBtn').after(t06ImportButton,t06ImportPanel);
-t06ImportButton.addEventListener('click',()=>{
- t06ImportPanel.hidden=!t06ImportPanel.hidden;
- t06ImportButton.setAttribute('aria-expanded',String(!t06ImportPanel.hidden));
-});
-t06ImportCancel.addEventListener('click',()=>{
- t06ImportPanel.hidden=true;t06ImportButton.setAttribute('aria-expanded','false');
-});
-t06ImportConfirm.addEventListener('click',async()=>{
- t06ImportConfirm.disabled=true;t06ImportCancel.disabled=true;t06ImportButton.disabled=true;
- t06ImportStatus.textContent='T06 자료를 가져오는 중입니다. 잠시 기다려 주세요.';
- try {
-  const result=await api('/api/export',{method:'POST',body:{action:'import-t06'}});
-  t06ImportStatus.textContent=result.already_imported?'이미 가져온 자료입니다. 중복으로 추가하지 않았습니다.':`가져오기 완료: 계획 ${result.counts.plans}개, 할 일 ${result.counts.tasks}개, 실행 ${result.counts.runs}개, 회고 ${result.counts.reviews}개. 기존 기록과 5일 관찰은 유지됩니다.`;
-  t06ImportConfirm.textContent='가져오기 완료';
-  try {await loadPlans();await renderView();}
-  catch(e){t06ImportStatus.textContent+=' 목록 갱신에 실패했습니다. 페이지를 새로고침해 주세요.';}
- } catch(e) {
-  t06ImportStatus.textContent=`가져오기 실패: ${e.message}`;
-  t06ImportConfirm.disabled=false;
- } finally {t06ImportCancel.disabled=false;t06ImportButton.disabled=false;}
-});
